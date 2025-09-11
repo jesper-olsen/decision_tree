@@ -5,8 +5,7 @@ use std::io::{BufRead, BufReader};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum SampleValue {
-    Int(i64),
-    Float(f64),
+    Numeric(f64),
     String(String),
     None,
 }
@@ -16,22 +15,18 @@ impl Eq for SampleValue {} // Manually implement Eq - treating NaN values as equ
 impl Hash for SampleValue {
     fn hash<H: Hasher>(&self, state: &mut H) {
         match self {
-            SampleValue::Int(i) => {
+            SampleValue::Numeric(f) => {
                 0u8.hash(state); // discriminant
-                i.hash(state);
-            }
-            SampleValue::Float(f) => {
-                1u8.hash(state); // discriminant
                 // For floats, we'll use the bit representation
                 // This treats -0.0 and 0.0 as different, but that's okay for our use case
                 f.to_bits().hash(state);
             }
             SampleValue::String(s) => {
-                2u8.hash(state); // discriminant
+                1u8.hash(state); // discriminant
                 s.hash(state);
             }
             SampleValue::None => {
-                3u8.hash(state); // discriminant
+                2u8.hash(state); // discriminant
             }
         }
     }
@@ -44,12 +39,8 @@ impl SampleValue {
             return SampleValue::None;
         }
 
-        if s.contains('.') {
-            if let Ok(f) = s.parse::<f64>() {
-                return SampleValue::Float(f);
-            }
-        } else if let Ok(i) = s.parse::<i64>() {
-            return SampleValue::Int(i);
+        if let Ok(f) = s.parse::<f64>() {
+            return SampleValue::Numeric(f);
         }
 
         SampleValue::String(s.to_string())
@@ -57,18 +48,14 @@ impl SampleValue {
 
     fn ge(&self, other: &SampleValue) -> bool {
         match (self, other) {
-            (SampleValue::Int(a), SampleValue::Int(b)) => a >= b,
-            (SampleValue::Float(a), SampleValue::Float(b)) => a >= b,
-            (SampleValue::Int(a), SampleValue::Float(b)) => *a as f64 >= *b,
-            (SampleValue::Float(a), SampleValue::Int(b)) => *a >= *b as f64,
+            (SampleValue::Numeric(a), SampleValue::Numeric(b)) => a >= b,
             _ => false,
         }
     }
 
     fn eq(&self, other: &SampleValue) -> bool {
         match (self, other) {
-            (SampleValue::Int(a), SampleValue::Int(b)) => a == b,
-            (SampleValue::Float(a), SampleValue::Float(b)) => a == b,
+            (SampleValue::Numeric(a), SampleValue::Numeric(b)) => a == b,
             (SampleValue::String(a), SampleValue::String(b)) => a == b,
             (SampleValue::None, SampleValue::None) => true,
             _ => false,
@@ -79,8 +66,7 @@ impl SampleValue {
 impl std::fmt::Display for SampleValue {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            SampleValue::Int(i) => write!(f, "{i}"),
-            SampleValue::Float(fl) => write!(f, "{fl}"),
+            SampleValue::Numeric(fl) => write!(f, "{fl}"),
             SampleValue::String(s) => write!(f, "{s}"),
             SampleValue::None => write!(f, "None"),
         }
@@ -159,7 +145,7 @@ impl DecisionNode {
     fn pick_branch(&self, v: &SampleValue) -> &Box<DecisionNode> {
         let value = self.value.as_ref().unwrap();
         let cond = match (v, value) {
-            (SampleValue::Int(_), _) | (SampleValue::Float(_), _) => v.ge(value),
+            (SampleValue::Numeric(_), _) => v.ge(value),
             _ => v.eq(value),
         };
 
@@ -289,26 +275,24 @@ impl DecisionNode {
         let column_name = headers.map(|h| h[col].as_str()).unwrap_or_else(|| "Column");
 
         let decision = match value {
-            SampleValue::Int(_) | SampleValue::Float(_) => format!("{} >= {}?", column_name, value),
-            _ => format!("{} == {}?", column_name, value),
+            SampleValue::Numeric(_) => format!("{column_name} >= {value}?"),
+            _ => format!("{column_name} == {value}?"),
         };
 
         let true_branch_str = format!(
-            "{}yes -> {}",
-            indent,
+            "{indent}yes -> {}",
             self.true_branch
                 .as_ref()
                 .unwrap()
-                .to_string(headers, &format!("{}    ", indent))
+                .to_string(headers, &format!("{indent}    "))
         );
 
         let false_branch_str = format!(
-            "{}no  -> {}",
-            indent,
+            "{indent}no  -> {}",
             self.false_branch
                 .as_ref()
                 .unwrap()
-                .to_string(headers, &format!("{}    ", indent))
+                .to_string(headers, &format!("{indent}    "))
         );
 
         format!("{}\n{}\n{}", decision, true_branch_str, false_branch_str)
@@ -474,7 +458,7 @@ fn split_set(rows: &[Sample], column: usize, value: &SampleValue) -> (Vec<Sample
             // Missing value - duplicate row into both sets
             set1.push(row.clone());
             set2.push(row.clone());
-        } else if matches!(value, SampleValue::Int(_) | SampleValue::Float(_)) {
+        } else if matches!(value, SampleValue::Numeric(_)) {
             if v.ge(value) {
                 set1.push(row.clone());
             } else {
@@ -585,86 +569,4 @@ pub fn print_classification_result(sample: &Sample, result: &HashMap<String, f64
         }
     }
     println!("{}", "-".repeat(40));
-}
-
-// Example usage functions
-
-pub fn small_example(
-    criterion: &str,
-    plot: Option<&str>,
-) -> Result<(), Box<dyn std::error::Error>> {
-    let (header, training_data) = load_csv("data/tbc.csv")?;
-    let dt = DecisionTree::train(training_data, header, criterion, None, 2);
-    println!("{}", dt);
-
-    println!("\n--- Classification Examples ---");
-
-    // Example 1: A sample with complete data
-    let complete_sample: Sample = vec![
-        SampleValue::String("ohne".to_string()),
-        SampleValue::String("leicht".to_string()),
-        SampleValue::String("Streifen".to_string()),
-        SampleValue::String("normal".to_string()),
-        SampleValue::String("normal".to_string()),
-    ];
-    let result1 = dt.classify(&complete_sample, false);
-    print_classification_result(&complete_sample, &result1);
-
-    // Example 2: A sample with missing data
-    let missing_sample: Sample = vec![
-        SampleValue::None,
-        SampleValue::String("leicht".to_string()),
-        SampleValue::None,
-        SampleValue::String("Flocken".to_string()),
-        SampleValue::String("fiepend".to_string()),
-    ];
-    let result2 = dt.classify(&missing_sample, true);
-    print_classification_result(&missing_sample, &result2);
-
-    if let Some(filename) = plot {
-        dt.export_graph(filename);
-    }
-
-    Ok(())
-}
-
-pub fn bigger_example(
-    criterion: &str,
-    plot: Option<&str>,
-) -> Result<(), Box<dyn std::error::Error>> {
-    let (header, training_data) = load_csv("data/fishiris.csv")?;
-    let mut dt = DecisionTree::train(training_data, header, criterion, None, 2);
-    println!("{}", dt);
-
-    // Prune the tree
-    dt.prune(0.5, criterion, true);
-    println!("{}", dt);
-
-    println!("\n--- Classification Examples ---");
-
-    // Example 1: A sample with complete data
-    let complete_sample: Sample = vec![
-        SampleValue::Float(6.0),
-        SampleValue::Float(2.2),
-        SampleValue::Float(5.0),
-        SampleValue::Float(1.5),
-    ];
-    let result1 = dt.classify(&complete_sample, false);
-    print_classification_result(&complete_sample, &result1);
-
-    // Example 2: A sample with missing data
-    let missing_sample: Sample = vec![
-        SampleValue::None,
-        SampleValue::None,
-        SampleValue::None,
-        SampleValue::Float(1.5),
-    ];
-    let result2 = dt.classify(&missing_sample, true);
-    print_classification_result(&missing_sample, &result2);
-
-    if let Some(filename) = plot {
-        dt.export_graph(filename);
-    }
-
-    Ok(())
 }

@@ -56,10 +56,10 @@ pub fn bigger_example(
 
     // Example 1: A sample with complete data
     let complete_sample: Sample = vec![
-        SampleValue::Float(6.0),
-        SampleValue::Float(2.2),
-        SampleValue::Float(5.0),
-        SampleValue::Float(1.5),
+        SampleValue::Numeric(6.0),
+        SampleValue::Numeric(2.2),
+        SampleValue::Numeric(5.0),
+        SampleValue::Numeric(1.5),
     ];
     let result1 = dt.classify(&complete_sample, false);
     print_classification_result(&complete_sample, &result1);
@@ -69,7 +69,7 @@ pub fn bigger_example(
         SampleValue::None,
         SampleValue::None,
         SampleValue::None,
-        SampleValue::Float(1.5),
+        SampleValue::Numeric(1.5),
     ];
     let result2 = dt.classify(&missing_sample, true);
     print_classification_result(&missing_sample, &result2);
