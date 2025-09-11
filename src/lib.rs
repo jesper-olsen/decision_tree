@@ -563,9 +563,9 @@ pub fn print_classification_result(sample: &Sample, result: &HashMap<String, f64
 
     for (class_name, score) in sorted_results {
         if score.fract() != 0.0 {
-            println!("    - {:<12}: {:.4}", class_name, score);
+            println!("    - {class_name:<12}: {score:.4}");
         } else {
-            println!("    - {:<12}: {}", class_name, *score as usize);
+            println!("    - {class_name:<12}: {}", *score as usize);
         }
     }
     println!("{}", "-".repeat(40));
