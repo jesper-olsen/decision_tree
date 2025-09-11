@@ -79,9 +79,9 @@ impl SampleValue {
 impl std::fmt::Display for SampleValue {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            SampleValue::Int(i) => write!(f, "{}", i),
-            SampleValue::Float(fl) => write!(f, "{}", fl),
-            SampleValue::String(s) => write!(f, "{}", s),
+            SampleValue::Int(i) => write!(f, "{i}"),
+            SampleValue::Float(fl) => write!(f, "{fl}"),
+            SampleValue::String(s) => write!(f, "{s}"),
             SampleValue::None => write!(f, "None"),
         }
     }
@@ -450,12 +450,9 @@ impl DecisionTree {
         self.root_node.prune(min_gain, eval_fn.as_ref(), notify);
     }
 
-    pub fn export_graph(&self, _filename: &str) {
+    pub fn export_graph(&self, filename: &str) {
         // Stub implementation as requested
-        println!(
-            "export_graph not implemented - would export to {}",
-            _filename
-        );
+        println!("export_graph not implemented - would export to {filename}");
     }
 }
 
