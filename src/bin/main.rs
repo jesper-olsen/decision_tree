@@ -44,7 +44,7 @@ pub fn bigger_example(
     criterion: &str,
     plot: Option<&str>,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let (header, training_data) = load_csv("data/fishiris.csv")?;
+    let (header, training_data) = load_csv("data/iris.csv")?;
     let mut dt = DecisionTree::train(training_data, header, criterion, None, 2);
     println!("{}", dt);
 
@@ -84,7 +84,7 @@ pub fn bigger_example(
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
 struct Args {
-    /// Which example to run: 1=small dataset (tbc), 2=larger dataset (fishiris)
+    /// Which example to run: 1=small dataset (tbc), 2=larger dataset (iris)
     #[arg(value_parser = clap::value_parser!(u8).range(1..=2))]
     example: u8,
 
