@@ -3,10 +3,45 @@ use std::fs::File;
 use std::hash::{Hash, Hasher};
 use std::io::{BufRead, BufReader};
 
+#[derive(Debug, Default)]
+pub struct Vocabulary {
+    map: HashMap<String, usize>,
+    vec: Vec<String>,
+}
+
+impl Vocabulary {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Interns a string, returning its unique ID.
+    pub fn get_or_intern(&mut self, s: &str) -> usize {
+        if let Some(id) = self.map.get(s) {
+            *id
+        } else {
+            let id = self.vec.len();
+            let owned_s = s.to_string();
+            self.vec.push(owned_s.clone());
+            self.map.insert(owned_s, id);
+            id
+        }
+    }
+
+    /// Retrieves the string slice for a given ID.
+    pub fn get_str(&self, id: usize) -> Option<&str> {
+        self.vec.get(id).map(|s| s.as_str())
+    }
+
+    /// Looks up the ID for a given string slice.
+    pub fn get_id(&self, s: &str) -> Option<usize> {
+        self.map.get(s).copied() // .copied() converts Option<&usize> to Option<usize>
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum SampleValue {
     Numeric(f64),
-    String(String),
+    String(usize),
     None,
 }
 
@@ -33,19 +68,19 @@ impl Hash for SampleValue {
 }
 
 impl SampleValue {
-    fn from_str(s: &str) -> Self {
-        let s = s.trim();
-        if s == "?" {
-            return SampleValue::None;
-        }
-
-        if let Ok(f) = s.parse::<f64>() {
-            return SampleValue::Numeric(f);
-        }
-
-        SampleValue::String(s.to_string())
-    }
-
+//    fn from_str(s: &str) -> Self {
+//        let s = s.trim();
+//        if s == "?" {
+//            return SampleValue::None;
+//        }
+//
+//        if let Ok(f) = s.parse::<f64>() {
+//            return SampleValue::Numeric(f);
+//        }
+//
+//        SampleValue::String(s.to_string())
+//    }
+//
     fn ge(&self, other: &SampleValue) -> bool {
         match (self, other) {
             (SampleValue::Numeric(a), SampleValue::Numeric(b)) => a >= b,
@@ -259,7 +294,7 @@ impl DecisionNode {
         }
     }
 
-    pub fn to_string(&self, headers: Option<&[String]>, indent: &str) -> String {
+    pub fn to_string(&self, headers: Option<&[String]>, indent: &str, vocab: &Vocabulary) -> String {
         if let Some(ref counts) = self.class_counts {
             let mut sorted: Vec<_> = counts.iter().collect();
             sorted.sort_by_key(|&(k, _)| k);
@@ -275,16 +310,15 @@ impl DecisionNode {
         let column_name = headers.map(|h| h[col].as_str()).unwrap_or_else(|| "Column");
 
         let decision = match value {
-            SampleValue::Numeric(_) => format!("{column_name} >= {value}?"),
-            _ => format!("{column_name} == {value}?"),
+            SampleValue::Numeric(n) => format!("{column_name} >= {n}?"),
+            // Look up the string from the ID
+            SampleValue::String(id) => format!("{column_name} == {}?", vocab.get_str(*id).unwrap()),
+            SampleValue::None => format!("{column_name} == None?"),
         };
 
         let true_branch_str = format!(
             "{indent}yes -> {}",
-            self.true_branch
-                .as_ref()
-                .unwrap()
-                .to_string(headers, &format!("{indent}    "))
+            self.true_branch.as_ref().unwrap().to_string(headers, &format!("{indent}    "), vocab)
         );
 
         let false_branch_str = format!(
@@ -292,22 +326,24 @@ impl DecisionNode {
             self.false_branch
                 .as_ref()
                 .unwrap()
-                .to_string(headers, &format!("{indent}    "))
+                .to_string(headers, &format!("{indent}    "),vocab)
         );
 
-        format!("{}\n{}\n{}", decision, true_branch_str, false_branch_str)
+        format!("{decision}\n{true_branch_str}\n{false_branch_str}")
     }
 }
 
-pub struct DecisionTree {
+pub struct DecisionTree<'a> {
     pub root_node: DecisionNode,
     pub header: Vec<String>,
+    pub vocab: &'a Vocabulary,
 }
 
-impl DecisionTree {
-    pub fn new(root_node: DecisionNode, header: Vec<String>) -> Self {
-        DecisionTree { root_node, header }
+impl<'a> DecisionTree<'a> {
+    pub fn new(root_node: DecisionNode, header: Vec<String>, vocab: &'a Vocabulary) -> Self {
+        DecisionTree { root_node, header, vocab }
     }
+
 
     pub fn size(&self) -> usize {
         self.root_node.size()
@@ -324,17 +360,19 @@ impl DecisionTree {
     pub fn train(
         data: Vec<Sample>,
         header: Vec<String>,
+        vocab: &'a Vocabulary,
         criterion: &str,
         max_depth: Option<usize>,
         min_samples_split: usize,
     ) -> Self {
         let eval_fn = Self::eval_fn(criterion);
-        let root = Self::grow_tree(data, min_samples_split, max_depth, eval_fn.as_ref(), 0);
-        DecisionTree::new(root, header)
+        let root = Self::grow_tree(&data, vocab, min_samples_split, max_depth, eval_fn.as_ref(), 0);
+        DecisionTree::new(root, header, vocab)
     }
 
     fn grow_tree(
-        rows: Vec<Sample>,
+        rows: &[Sample],
+            vocab: &Vocabulary,
         min_samples_split: usize,
         max_depth: Option<usize>,
         criterion: &dyn Fn(&Counter) -> f64,
@@ -344,7 +382,7 @@ impl DecisionTree {
             return DecisionNode::new();
         }
 
-        let current_score = criterion(&count_classes(&rows));
+        let current_score = criterion(&count_classes(&rows,vocab));
 
         // Pre-pruning
         let summary = Summary {
@@ -354,7 +392,7 @@ impl DecisionTree {
 
         if (max_depth.is_some() && depth >= max_depth.unwrap()) || (rows.len() < min_samples_split)
         {
-            return DecisionNode::leaf(count_classes(&rows), summary);
+            return DecisionNode::leaf(count_classes(&rows, vocab), summary);
         }
 
         let mut best_gain = 0.0;
@@ -364,7 +402,7 @@ impl DecisionTree {
         let column_count = rows[0].len() - 1;
         for col in 0..column_count {
             let mut column_values = std::collections::HashSet::new();
-            for row in &rows {
+            for row in rows {
                 column_values.insert(row[col].clone());
             }
 
@@ -380,8 +418,8 @@ impl DecisionTree {
 
                 let p = set1.len() as f64 / rows.len() as f64;
                 let gain = current_score
-                    - p * criterion(&count_classes(&set1))
-                    - (1.0 - p) * criterion(&count_classes(&set2));
+                    - p * criterion(&count_classes(&set1, vocab))
+                    - (1.0 - p) * criterion(&count_classes(&set2,vocab));
 
                 if gain > best_gain {
                     best_gain = gain;
@@ -396,7 +434,8 @@ impl DecisionTree {
             let (set1, set2) = best_sets.unwrap();
 
             let true_branch = Box::new(Self::grow_tree(
-                set1,
+                &set1,
+                &vocab,
                 min_samples_split,
                 max_depth,
                 criterion,
@@ -404,7 +443,8 @@ impl DecisionTree {
             ));
 
             let false_branch = Box::new(Self::grow_tree(
-                set2,
+                &set2,
+                &vocab,
                 min_samples_split,
                 max_depth,
                 criterion,
@@ -413,7 +453,7 @@ impl DecisionTree {
 
             DecisionNode::internal(col, value, true_branch, false_branch, summary)
         } else {
-            DecisionNode::leaf(count_classes(&rows), summary)
+            DecisionNode::leaf(count_classes(&rows, vocab), summary)
         }
     }
 
@@ -438,11 +478,15 @@ impl DecisionTree {
         // Stub implementation as requested
         println!("export_graph not implemented - would export to {filename}");
     }
+
+    pub fn to_string(&self) -> String {
+        self.root_node.to_string(Some(&self.header), "", self.vocab)
+    }
 }
 
-impl std::fmt::Display for DecisionTree {
+impl<'a> std::fmt::Display for DecisionTree<'a> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.root_node.to_string(Some(&self.header), ""))
+        write!(f, "{}", self.to_string())
     }
 }
 
@@ -476,16 +520,22 @@ fn split_set(rows: &[Sample], column: usize, value: &SampleValue) -> (Vec<Sample
     (set1, set2)
 }
 
-fn count_classes(rows: &[Sample]) -> Counter {
+fn count_classes(rows: &[Sample], vocab: &Vocabulary) -> Counter {
+    // TODO Counter[idx]
     let mut counts = HashMap::new();
     for row in rows {
         if let Some(last) = row.last() {
-            let class_str = last.to_string();
+            // The class label is the last value in the row
+            let class_str = match last {
+                SampleValue::String(id) => vocab.get_str(*id).unwrap_or("?").to_string(),
+                _ => last.to_string(),
+            };
             *counts.entry(class_str).or_insert(0) += 1;
         }
     }
     counts
 }
+
 
 fn entropy(counts: &Counter) -> f64 {
     let total: usize = counts.values().sum();
@@ -521,7 +571,7 @@ fn gini(counts: &Counter) -> f64 {
 
 // Utility functions
 
-pub fn load_csv(fname: &str) -> Result<(Vec<String>, Vec<Sample>), Box<dyn std::error::Error>> {
+pub fn load_csv(fname: &str) -> Result<(Vec<String>, Vec<Sample>, Vocabulary), Box<dyn std::error::Error>> {
     let file = File::open(fname)?;
     let reader = BufReader::new(file);
     let mut lines = reader.lines();
@@ -530,13 +580,29 @@ pub fn load_csv(fname: &str) -> Result<(Vec<String>, Vec<Sample>), Box<dyn std::
     let header: Vec<String> = header_line.split(',').map(|s| s.to_string()).collect();
 
     let mut data = Vec::new();
+    let mut vocab = Vocabulary::new(); // Create the interner
+
     for line_result in lines {
         let line = line_result?;
-        let row: Sample = line.split(',').map(|s| SampleValue::from_str(s)).collect();
+        let row: Sample = line
+            .split(',')
+            .map(|s| {
+                let s = s.trim();
+                if s == "?" {
+                    return SampleValue::None;
+                }
+                if let Ok(f) = s.parse::<f64>() {
+                    return SampleValue::Numeric(f);
+                }
+                // It's a string, so intern it!
+                let id = vocab.get_or_intern(s);
+                SampleValue::String(id)
+            })
+            .collect();
         data.push(row);
     }
 
-    Ok((header, data))
+    Ok((header, data, vocab)) 
 }
 
 pub fn print_classification_result(sample: &Sample, result: &HashMap<String, f64>) {

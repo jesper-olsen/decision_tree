@@ -1,5 +1,5 @@
 use clap::Parser;
-use decision_tree::{DecisionTree, Sample, load_csv};
+use decision_tree::{DecisionTree, Sample, load_csv, Vocabulary};
 use rand::SeedableRng;
 use rand::seq::SliceRandom;
 use rand_chacha::ChaCha8Rng;
@@ -110,7 +110,7 @@ fn calculate_accuracy(model: &DecisionTree, test_data: &[Sample]) -> f64 {
     (correct_predictions as f64 / total_predictions as f64) * 100.0
 }
 
-fn kfold_eval(data: Vec<Sample>, header: Vec<String>, args: &Args) {
+fn kfold_eval(data: Vec<Sample>, header: Vec<String>, vocab: Vocabulary, args: &Args) {
     println!("\nPerforming {}-fold cross-validation...", args.k_folds);
     let folds = create_folds(&data, args.k_folds);
     let mut fold_accuracies = Vec::new();
@@ -138,6 +138,7 @@ fn kfold_eval(data: Vec<Sample>, header: Vec<String>, args: &Args) {
         let mut model = DecisionTree::train(
             train_data,
             header.clone(),
+            &vocab,
             &args.criterion,
             args.max_depth,
             args.min_samples_split,
@@ -179,7 +180,7 @@ fn kfold_eval(data: Vec<Sample>, header: Vec<String>, args: &Args) {
     println!("{}", "=".repeat(30));
 }
 
-fn split_eval(data: Vec<Sample>, header: Vec<String>, args: &Args) {
+fn split_eval(data: Vec<Sample>, header: Vec<String>, vocab: Vocabulary, args: &Args) {
     println!("\nPerforming a simple train/test split...");
     let (train_data, test_data) = split_data(&data, args.split_ratio);
     println!(
@@ -196,6 +197,7 @@ fn split_eval(data: Vec<Sample>, header: Vec<String>, args: &Args) {
     let mut model = DecisionTree::train(
         train_data,
         header,
+        &vocab,
         &args.criterion,
         args.max_depth,
         args.min_samples_split,
@@ -228,11 +230,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     if let Some(test_file) = args.test_file {
         // Case 1: External test file provided
         println!("Loading training dataset from: {}...", args.file_path);
-        let (header, train_data) = load_csv(&args.file_path)?;
+        let (header, train_data, vocab) = load_csv(&args.file_path)?;
         println!("Training set: {} rows", train_data.len());
 
         println!("Loading test dataset from: {}...", test_file);
-        let (_test_header, test_data) = load_csv(&test_file)?;
+        let (_test_header, test_data, _test_vocab) = load_csv(&test_file)?;
         println!("Test set: {} rows", test_data.len());
 
         // Train
@@ -243,6 +245,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let mut model = DecisionTree::train(
             train_data,
             header,
+            &vocab,
             &args.criterion,
             args.max_depth,
             args.min_samples_split,
@@ -267,14 +270,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     } else {
         // Case 2: Single file, split or k-fold
         println!("Loading dataset from: {}...", args.file_path);
-        let (header, data) = load_csv(&args.file_path)?;
+        let (header, data, vocab) = load_csv(&args.file_path)?;
         println!("Dataset loaded successfully with {} rows.", data.len());
 
         // Choose evaluation method
         if args.k_folds > 1 {
-            kfold_eval(data, header, &args);
+            kfold_eval(data, header, vocab, &args);
         } else {
-            split_eval(data, header, &args);
+            split_eval(data, header, vocab, &args);
         }
     }
 

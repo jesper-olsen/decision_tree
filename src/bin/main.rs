@@ -5,19 +5,19 @@ pub fn small_example(
     criterion: &str,
     plot: Option<&str>,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let (header, training_data) = load_csv("data/tbc.csv")?;
-    let dt = DecisionTree::train(training_data, header, criterion, None, 2);
-    println!("{}", dt);
+    let (header, training_data, vocab) = load_csv("data/tbc.csv")?;
+    let dt = DecisionTree::train(training_data, header, &vocab, criterion, None, 2);
+    println!("{dt}");
 
     println!("\n--- Classification Examples ---");
 
     // Example 1: A sample with complete data
     let complete_sample: Sample = vec![
-        SampleValue::String("ohne".to_string()),
-        SampleValue::String("leicht".to_string()),
-        SampleValue::String("Streifen".to_string()),
-        SampleValue::String("normal".to_string()),
-        SampleValue::String("normal".to_string()),
+        SampleValue::String(vocab.get_id("ohne").unwrap()),
+        SampleValue::String(vocab.get_id("leicht").unwrap()),
+        SampleValue::String(vocab.get_id("Streifen").unwrap()),
+        SampleValue::String(vocab.get_id("normal").unwrap()),
+        SampleValue::String(vocab.get_id("normal").unwrap()),
     ];
     let result1 = dt.classify(&complete_sample, false);
     print_classification_result(&complete_sample, &result1);
@@ -25,10 +25,10 @@ pub fn small_example(
     // Example 2: A sample with missing data
     let missing_sample: Sample = vec![
         SampleValue::None,
-        SampleValue::String("leicht".to_string()),
+        SampleValue::String(vocab.get_id("leicht").unwrap()),
         SampleValue::None,
-        SampleValue::String("Flocken".to_string()),
-        SampleValue::String("fiepend".to_string()),
+        SampleValue::String(vocab.get_id("Flocken").unwrap()),
+        SampleValue::String(vocab.get_id("fiepend").unwrap()),
     ];
     let result2 = dt.classify(&missing_sample, true);
     print_classification_result(&missing_sample, &result2);
@@ -44,8 +44,8 @@ pub fn bigger_example(
     criterion: &str,
     plot: Option<&str>,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let (header, training_data) = load_csv("data/iris.csv")?;
-    let mut dt = DecisionTree::train(training_data, header, criterion, None, 2);
+    let (header, training_data, vocab) = load_csv("data/iris.csv")?;
+    let mut dt = DecisionTree::train(training_data, header, &vocab, criterion, None, 2);
     println!("{}", dt);
 
     // Prune the tree
