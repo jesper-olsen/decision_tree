@@ -1,5 +1,5 @@
 use clap::Parser;
-use decision_tree::{DecisionTree, Sample, load_csv, Vocabulary};
+use decision_tree::{DecisionTree, Sample, Vocabulary, load_csv};
 use rand::SeedableRng;
 use rand::seq::SliceRandom;
 use rand_chacha::ChaCha8Rng;
@@ -175,8 +175,8 @@ fn kfold_eval(data: Vec<Sample>, header: Vec<String>, vocab: Vocabulary, args: &
         0.0
     };
 
-    println!("Average Accuracy: {:.2}%", avg_accuracy);
-    println!("Standard Deviation: {:.2}%", std_dev);
+    println!("Average Accuracy: {avg_accuracy:.2}%");
+    println!("Standard Deviation: {std_dev:.2}%");
     println!("{}", "=".repeat(30));
 }
 
@@ -220,7 +220,7 @@ fn split_eval(data: Vec<Sample>, header: Vec<String>, vocab: Vocabulary, args: &
     let accuracy = calculate_accuracy(&model, &test_data);
 
     println!("\n--- Evaluation Result ---");
-    println!("Model Accuracy: {:.2}%", accuracy);
+    println!("Model Accuracy: {accuracy:.2}%");
     println!("{}", "-".repeat(30));
 }
 
@@ -233,7 +233,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let (header, train_data, vocab) = load_csv(&args.file_path)?;
         println!("Training set: {} rows", train_data.len());
 
-        println!("Loading test dataset from: {}...", test_file);
+        println!("Loading test dataset from: {test_file}...");
         let (_test_header, test_data, _test_vocab) = load_csv(&test_file)?;
         println!("Test set: {} rows", test_data.len());
 
@@ -255,7 +255,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         if args.prune > 0.0 {
             println!("Pruning the tree with min_gain = {}...", args.prune);
             model.prune(args.prune, &args.criterion, true);
-            println!("Pruning complete.");
+            println!("Pruned model down to {} nodes", model.size());
         }
 
         if let Some(ref plot_file) = args.plot {
@@ -265,7 +265,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         println!("\nEvaluating model accuracy on the external test set...");
         let accuracy = calculate_accuracy(&model, &test_data);
         println!("\n--- Evaluation Result ---");
-        println!("Model Accuracy: {:.2}%", accuracy);
+        println!("Model Accuracy: {accuracy:.2}%");
         println!("{}", "-".repeat(30));
     } else {
         // Case 2: Single file, split or k-fold

@@ -1,5 +1,37 @@
 use clap::Parser;
-use decision_tree::{DecisionTree, Sample, SampleValue, load_csv, print_classification_result};
+use decision_tree::{DecisionTree, Sample, SampleValue, load_csv};
+
+pub fn print_classification_result(sample: &Sample, result: &HashMap<String, f64>) {
+    if result.is_empty() {
+        println!("Could not classify sample: {sample:?}");
+        return;
+    }
+
+    // Determine the final prediction
+    let prediction = result
+        .iter()
+        .max_by(|a, b| a.1.partial_cmp(b.1).unwrap())
+        .map(|(k, _)| k)
+        .unwrap();
+
+    // Sort results by score (descending)
+    let mut sorted_results: Vec<_> = result.iter().collect();
+    sorted_results.sort_by(|a, b| b.1.partial_cmp(a.1).unwrap());
+
+    println!("{}", "-".repeat(40));
+    println!("Input Sample: {sample:?}");
+    println!("--> Predicted Class: '{prediction}'");
+    println!("\nDetailed Scores (Leaf Node Counts / Weights):");
+
+    for (class_name, score) in sorted_results {
+        if score.fract() != 0.0 {
+            println!("    - {class_name:<12}: {score:.4}");
+        } else {
+            println!("    - {class_name:<12}: {}", *score as usize);
+        }
+    }
+    println!("{}", "-".repeat(40));
+}
 
 pub fn small_example(
     criterion: &str,
@@ -46,11 +78,11 @@ pub fn bigger_example(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let (header, training_data, vocab) = load_csv("data/iris.csv")?;
     let mut dt = DecisionTree::train(training_data, header, &vocab, criterion, None, 2);
-    println!("{}", dt);
+    println!("{dt}");
 
     // Prune the tree
     dt.prune(0.5, criterion, true);
-    println!("{}", dt);
+    println!("{dt}");
 
     println!("\n--- Classification Examples ---");
 

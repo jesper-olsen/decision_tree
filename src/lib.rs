@@ -68,19 +68,6 @@ impl Hash for SampleValue {
 }
 
 impl SampleValue {
-//    fn from_str(s: &str) -> Self {
-//        let s = s.trim();
-//        if s == "?" {
-//            return SampleValue::None;
-//        }
-//
-//        if let Ok(f) = s.parse::<f64>() {
-//            return SampleValue::Numeric(f);
-//        }
-//
-//        SampleValue::String(s.to_string())
-//    }
-//
     fn ge(&self, other: &SampleValue) -> bool {
         match (self, other) {
             (SampleValue::Numeric(a), SampleValue::Numeric(b)) => a >= b,
@@ -101,8 +88,8 @@ impl SampleValue {
 impl std::fmt::Display for SampleValue {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            SampleValue::Numeric(fl) => write!(f, "{fl}"),
-            SampleValue::String(s) => write!(f, "{s}"),
+            SampleValue::Numeric(fl) => write!(f, "Numeric {fl}"),
+            SampleValue::String(s) => write!(f, "String {s}"),
             SampleValue::None => write!(f, "None"),
         }
     }
@@ -177,7 +164,7 @@ impl DecisionNode {
         }
     }
 
-    fn pick_branch(&self, v: &SampleValue) -> &Box<DecisionNode> {
+    fn pick_branch(&self, v: &SampleValue) -> &DecisionNode {
         let value = self.value.as_ref().unwrap();
         let cond = match (v, value) {
             (SampleValue::Numeric(_), _) => v.ge(value),
@@ -284,7 +271,7 @@ impl DecisionNode {
 
                 if gain < min_gain {
                     if notify {
-                        println!("A branch was pruned: gain = {:.4}", gain);
+                        println!("A branch was pruned: gain = {gain:.4}");
                     }
                     self.true_branch = None;
                     self.false_branch = None;
@@ -294,13 +281,18 @@ impl DecisionNode {
         }
     }
 
-    pub fn to_string(&self, headers: Option<&[String]>, indent: &str, vocab: &Vocabulary) -> String {
+    pub fn to_string(
+        &self,
+        headers: Option<&[String]>,
+        indent: &str,
+        vocab: &Vocabulary,
+    ) -> String {
         if let Some(ref counts) = self.class_counts {
             let mut sorted: Vec<_> = counts.iter().collect();
             sorted.sort_by_key(|&(k, _)| k);
             return sorted
                 .iter()
-                .map(|(k, v)| format!("{}: {}", k, v))
+                .map(|(k, v)| format!("{k}: {v}"))
                 .collect::<Vec<_>>()
                 .join(", ");
         }
@@ -318,7 +310,10 @@ impl DecisionNode {
 
         let true_branch_str = format!(
             "{indent}yes -> {}",
-            self.true_branch.as_ref().unwrap().to_string(headers, &format!("{indent}    "), vocab)
+            self.true_branch
+                .as_ref()
+                .unwrap()
+                .to_string(headers, &format!("{indent}    "), vocab)
         );
 
         let false_branch_str = format!(
@@ -326,7 +321,7 @@ impl DecisionNode {
             self.false_branch
                 .as_ref()
                 .unwrap()
-                .to_string(headers, &format!("{indent}    "),vocab)
+                .to_string(headers, &format!("{indent}    "), vocab)
         );
 
         format!("{decision}\n{true_branch_str}\n{false_branch_str}")
@@ -341,9 +336,12 @@ pub struct DecisionTree<'a> {
 
 impl<'a> DecisionTree<'a> {
     pub fn new(root_node: DecisionNode, header: Vec<String>, vocab: &'a Vocabulary) -> Self {
-        DecisionTree { root_node, header, vocab }
+        DecisionTree {
+            root_node,
+            header,
+            vocab,
+        }
     }
-
 
     pub fn size(&self) -> usize {
         self.root_node.size()
@@ -353,7 +351,7 @@ impl<'a> DecisionTree<'a> {
         match criterion {
             "entropy" => Box::new(entropy),
             "gini" => Box::new(gini),
-            _ => panic!("Unknown criterion: {}", criterion),
+            _ => panic!("Unknown criterion: {criterion}"),
         }
     }
 
@@ -366,13 +364,20 @@ impl<'a> DecisionTree<'a> {
         min_samples_split: usize,
     ) -> Self {
         let eval_fn = Self::eval_fn(criterion);
-        let root = Self::grow_tree(&data, vocab, min_samples_split, max_depth, eval_fn.as_ref(), 0);
+        let root = Self::grow_tree(
+            &data,
+            vocab,
+            min_samples_split,
+            max_depth,
+            eval_fn.as_ref(),
+            0,
+        );
         DecisionTree::new(root, header, vocab)
     }
 
     fn grow_tree(
         rows: &[Sample],
-            vocab: &Vocabulary,
+        vocab: &Vocabulary,
         min_samples_split: usize,
         max_depth: Option<usize>,
         criterion: &dyn Fn(&Counter) -> f64,
@@ -382,7 +387,7 @@ impl<'a> DecisionTree<'a> {
             return DecisionNode::new();
         }
 
-        let current_score = criterion(&count_classes(&rows,vocab));
+        let current_score = criterion(&count_classes(rows, vocab));
 
         // Pre-pruning
         let summary = Summary {
@@ -392,7 +397,7 @@ impl<'a> DecisionTree<'a> {
 
         if (max_depth.is_some() && depth >= max_depth.unwrap()) || (rows.len() < min_samples_split)
         {
-            return DecisionNode::leaf(count_classes(&rows, vocab), summary);
+            return DecisionNode::leaf(count_classes(rows, vocab), summary);
         }
 
         let mut best_gain = 0.0;
@@ -411,7 +416,7 @@ impl<'a> DecisionTree<'a> {
                     continue;
                 }
 
-                let (set1, set2) = split_set(&rows, col, &value);
+                let (set1, set2) = split_set(rows, col, &value);
                 if set1.is_empty() || set2.is_empty() {
                     continue;
                 }
@@ -419,7 +424,7 @@ impl<'a> DecisionTree<'a> {
                 let p = set1.len() as f64 / rows.len() as f64;
                 let gain = current_score
                     - p * criterion(&count_classes(&set1, vocab))
-                    - (1.0 - p) * criterion(&count_classes(&set2,vocab));
+                    - (1.0 - p) * criterion(&count_classes(&set2, vocab));
 
                 if gain > best_gain {
                     best_gain = gain;
@@ -435,7 +440,7 @@ impl<'a> DecisionTree<'a> {
 
             let true_branch = Box::new(Self::grow_tree(
                 &set1,
-                &vocab,
+                vocab,
                 min_samples_split,
                 max_depth,
                 criterion,
@@ -444,7 +449,7 @@ impl<'a> DecisionTree<'a> {
 
             let false_branch = Box::new(Self::grow_tree(
                 &set2,
-                &vocab,
+                vocab,
                 min_samples_split,
                 max_depth,
                 criterion,
@@ -453,7 +458,7 @@ impl<'a> DecisionTree<'a> {
 
             DecisionNode::internal(col, value, true_branch, false_branch, summary)
         } else {
-            DecisionNode::leaf(count_classes(&rows, vocab), summary)
+            DecisionNode::leaf(count_classes(rows, vocab), summary)
         }
     }
 
@@ -478,15 +483,15 @@ impl<'a> DecisionTree<'a> {
         // Stub implementation as requested
         println!("export_graph not implemented - would export to {filename}");
     }
-
-    pub fn to_string(&self) -> String {
-        self.root_node.to_string(Some(&self.header), "", self.vocab)
-    }
 }
 
 impl<'a> std::fmt::Display for DecisionTree<'a> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.to_string())
+        write!(
+            f,
+            "{}",
+            self.root_node.to_string(Some(&self.header), "", self.vocab)
+        )
     }
 }
 
@@ -508,12 +513,10 @@ fn split_set(rows: &[Sample], column: usize, value: &SampleValue) -> (Vec<Sample
             } else {
                 set2.push(row.clone());
             }
+        } else if v.eq(value) {
+            set1.push(row.clone());
         } else {
-            if v.eq(value) {
-                set1.push(row.clone());
-            } else {
-                set2.push(row.clone());
-            }
+            set2.push(row.clone());
         }
     }
 
@@ -535,7 +538,6 @@ fn count_classes(rows: &[Sample], vocab: &Vocabulary) -> Counter {
     }
     counts
 }
-
 
 fn entropy(counts: &Counter) -> f64 {
     let total: usize = counts.values().sum();
@@ -571,7 +573,9 @@ fn gini(counts: &Counter) -> f64 {
 
 // Utility functions
 
-pub fn load_csv(fname: &str) -> Result<(Vec<String>, Vec<Sample>, Vocabulary), Box<dyn std::error::Error>> {
+pub fn load_csv(
+    fname: &str,
+) -> Result<(Vec<String>, Vec<Sample>, Vocabulary), Box<dyn std::error::Error>> {
     let file = File::open(fname)?;
     let reader = BufReader::new(file);
     let mut lines = reader.lines();
@@ -602,37 +606,5 @@ pub fn load_csv(fname: &str) -> Result<(Vec<String>, Vec<Sample>, Vocabulary), B
         data.push(row);
     }
 
-    Ok((header, data, vocab)) 
-}
-
-pub fn print_classification_result(sample: &Sample, result: &HashMap<String, f64>) {
-    if result.is_empty() {
-        println!("Could not classify sample: {:?}", sample);
-        return;
-    }
-
-    // Determine the final prediction
-    let prediction = result
-        .iter()
-        .max_by(|a, b| a.1.partial_cmp(b.1).unwrap())
-        .map(|(k, _)| k)
-        .unwrap();
-
-    // Sort results by score (descending)
-    let mut sorted_results: Vec<_> = result.iter().collect();
-    sorted_results.sort_by(|a, b| b.1.partial_cmp(a.1).unwrap());
-
-    println!("{}", "-".repeat(40));
-    println!("Input Sample: {:?}", sample);
-    println!("--> Predicted Class: '{}'", prediction);
-    println!("\nDetailed Scores (Leaf Node Counts / Weights):");
-
-    for (class_name, score) in sorted_results {
-        if score.fract() != 0.0 {
-            println!("    - {class_name:<12}: {score:.4}");
-        } else {
-            println!("    - {class_name:<12}: {}", *score as usize);
-        }
-    }
-    println!("{}", "-".repeat(40));
+    Ok((header, data, vocab))
 }
