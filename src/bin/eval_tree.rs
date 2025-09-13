@@ -1,5 +1,5 @@
 use clap::Parser;
-use decision_tree::{DecisionTree, Sample, Vocabulary, load_csv};
+use decision_tree::{DecisionTree, Sample, Vocabulary, load_single_csv, load_train_test_csv,SampleValue};
 use rand::SeedableRng;
 use rand::seq::SliceRandom;
 use rand_chacha::ChaCha8Rng;
@@ -101,7 +101,7 @@ fn calculate_accuracy(model: &DecisionTree, test_data: &[Sample]) -> f64 {
                 .map(|(k, _)| k)
                 .unwrap();
 
-            if predicted_label == &true_label.to_string() {
+            if SampleValue::String(*predicted_label) == *true_label {
                 correct_predictions += 1;
             }
         }
@@ -229,13 +229,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     if let Some(test_file) = args.test_file {
         // Case 1: External test file provided
-        println!("Loading training dataset from: {}...", args.file_path);
-        let (header, train_data, vocab) = load_csv(&args.file_path)?;
-        println!("Training set: {} rows", train_data.len());
-
-        println!("Loading test dataset from: {test_file}...");
-        let (_test_header, test_data, _test_vocab) = load_csv(&test_file)?;
-        println!("Test set: {} rows", test_data.len());
+        let (header, train_data, test_data, vocab, _num_classes)=load_train_test_csv(&args.file_path, &test_file, None, true)?; 
 
         // Train
         println!(
@@ -269,8 +263,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         println!("{}", "-".repeat(30));
     } else {
         // Case 2: Single file, split or k-fold
-        println!("Loading dataset from: {}...", args.file_path);
-        let (header, data, vocab) = load_csv(&args.file_path)?;
+        let (header, data, vocab, _num_classes) = load_single_csv(&args.file_path, None, true)?;
         println!("Dataset loaded successfully with {} rows.", data.len());
 
         // Choose evaluation method

@@ -1,9 +1,11 @@
 use clap::Parser;
-use decision_tree::{DecisionTree, Sample, SampleValue, load_csv};
+use decision_tree::{DecisionTree, Sample, SampleValue, load_single_csv, Vocabulary};
+use std::collections::HashMap;
 
-pub fn print_classification_result(sample: &Sample, result: &HashMap<String, f64>) {
+pub fn print_classification_result(sample: &Sample, result: &HashMap<usize, f64>, vocab: &Vocabulary) {
     if result.is_empty() {
         println!("Could not classify sample: {sample:?}");
+
         return;
     }
 
@@ -11,7 +13,7 @@ pub fn print_classification_result(sample: &Sample, result: &HashMap<String, f64
     let prediction = result
         .iter()
         .max_by(|a, b| a.1.partial_cmp(b.1).unwrap())
-        .map(|(k, _)| k)
+        .map(|(k, _)| vocab.get_str(*k).unwrap())
         .unwrap();
 
     // Sort results by score (descending)
@@ -23,7 +25,8 @@ pub fn print_classification_result(sample: &Sample, result: &HashMap<String, f64
     println!("--> Predicted Class: '{prediction}'");
     println!("\nDetailed Scores (Leaf Node Counts / Weights):");
 
-    for (class_name, score) in sorted_results {
+    for (class_id, score) in sorted_results {
+        let class_name=vocab.get_str(*class_id).unwrap();
         if score.fract() != 0.0 {
             println!("    - {class_name:<12}: {score:.4}");
         } else {
@@ -37,7 +40,7 @@ pub fn small_example(
     criterion: &str,
     plot: Option<&str>,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let (header, training_data, vocab) = load_csv("data/tbc.csv")?;
+    let (header, training_data, vocab, _num_classes) = load_single_csv("data/tbc.csv", None, true)?;
     let dt = DecisionTree::train(training_data, header, &vocab, criterion, None, 2);
     println!("{dt}");
 
@@ -52,7 +55,7 @@ pub fn small_example(
         SampleValue::String(vocab.get_id("normal").unwrap()),
     ];
     let result1 = dt.classify(&complete_sample, false);
-    print_classification_result(&complete_sample, &result1);
+    print_classification_result(&complete_sample, &result1, &vocab);
 
     // Example 2: A sample with missing data
     let missing_sample: Sample = vec![
@@ -63,7 +66,7 @@ pub fn small_example(
         SampleValue::String(vocab.get_id("fiepend").unwrap()),
     ];
     let result2 = dt.classify(&missing_sample, true);
-    print_classification_result(&missing_sample, &result2);
+    print_classification_result(&missing_sample, &result2, &vocab);
 
     if let Some(filename) = plot {
         dt.export_graph(filename);
@@ -76,7 +79,7 @@ pub fn bigger_example(
     criterion: &str,
     plot: Option<&str>,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let (header, training_data, vocab) = load_csv("data/iris.csv")?;
+    let (header, training_data, vocab, _num_classes) = load_single_csv("data/iris.csv", None, true)?;
     let mut dt = DecisionTree::train(training_data, header, &vocab, criterion, None, 2);
     println!("{dt}");
 
@@ -94,7 +97,7 @@ pub fn bigger_example(
         SampleValue::Numeric(1.5),
     ];
     let result1 = dt.classify(&complete_sample, false);
-    print_classification_result(&complete_sample, &result1);
+    print_classification_result(&complete_sample, &result1, &vocab);
 
     // Example 2: A sample with missing data
     let missing_sample: Sample = vec![
@@ -104,7 +107,7 @@ pub fn bigger_example(
         SampleValue::Numeric(1.5),
     ];
     let result2 = dt.classify(&missing_sample, true);
-    print_classification_result(&missing_sample, &result2);
+    print_classification_result(&missing_sample, &result2, &vocab);
 
     if let Some(filename) = plot {
         dt.export_graph(filename);

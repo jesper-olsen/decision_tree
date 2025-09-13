@@ -6,7 +6,7 @@ use std::io::{BufRead, BufReader};
 #[derive(Debug, Default)]
 pub struct Vocabulary {
     map: HashMap<String, usize>,
-    vec: Vec<String>,
+    pub vec: Vec<String>,
 }
 
 impl Vocabulary {
@@ -35,6 +35,10 @@ impl Vocabulary {
     /// Looks up the ID for a given string slice.
     pub fn get_id(&self, s: &str) -> Option<usize> {
         self.map.get(s).copied() // .copied() converts Option<&usize> to Option<usize>
+    }
+
+    pub fn len(&self) -> usize {
+        self.vec.len()
     }
 }
 
@@ -96,7 +100,7 @@ impl std::fmt::Display for SampleValue {
 }
 
 pub type Sample = Vec<SampleValue>;
-pub type Counter = HashMap<String, usize>;
+pub type Counter = HashMap<usize, usize>;
 
 #[derive(Debug, Clone)]
 pub struct Summary {
@@ -189,7 +193,7 @@ impl DecisionNode {
         branch.classify(sample)
     }
 
-    pub fn classify_with_missing_data(&self, sample: &Sample) -> HashMap<String, f64> {
+    pub fn classify_with_missing_data(&self, sample: &Sample) -> HashMap<usize, f64> {
         if let Some(ref counts) = self.class_counts {
             return counts.iter().map(|(k, &v)| (k.clone(), v as f64)).collect();
         }
@@ -366,7 +370,6 @@ impl<'a> DecisionTree<'a> {
         let eval_fn = Self::eval_fn(criterion);
         let root = Self::grow_tree(
             &data,
-            vocab,
             min_samples_split,
             max_depth,
             eval_fn.as_ref(),
@@ -377,7 +380,6 @@ impl<'a> DecisionTree<'a> {
 
     fn grow_tree(
         rows: &[Sample],
-        vocab: &Vocabulary,
         min_samples_split: usize,
         max_depth: Option<usize>,
         criterion: &dyn Fn(&Counter) -> f64,
@@ -387,7 +389,7 @@ impl<'a> DecisionTree<'a> {
             return DecisionNode::new();
         }
 
-        let current_score = criterion(&count_classes(rows, vocab));
+        let current_score = criterion(&count_classes(rows));
 
         // Pre-pruning
         let summary = Summary {
@@ -397,7 +399,7 @@ impl<'a> DecisionTree<'a> {
 
         if (max_depth.is_some() && depth >= max_depth.unwrap()) || (rows.len() < min_samples_split)
         {
-            return DecisionNode::leaf(count_classes(rows, vocab), summary);
+            return DecisionNode::leaf(count_classes(rows), summary);
         }
 
         let mut best_gain = 0.0;
@@ -423,8 +425,8 @@ impl<'a> DecisionTree<'a> {
 
                 let p = set1.len() as f64 / rows.len() as f64;
                 let gain = current_score
-                    - p * criterion(&count_classes(&set1, vocab))
-                    - (1.0 - p) * criterion(&count_classes(&set2, vocab));
+                    - p * criterion(&count_classes(&set1))
+                    - (1.0 - p) * criterion(&count_classes(&set2));
 
                 if gain > best_gain {
                     best_gain = gain;
@@ -440,7 +442,6 @@ impl<'a> DecisionTree<'a> {
 
             let true_branch = Box::new(Self::grow_tree(
                 &set1,
-                vocab,
                 min_samples_split,
                 max_depth,
                 criterion,
@@ -449,7 +450,6 @@ impl<'a> DecisionTree<'a> {
 
             let false_branch = Box::new(Self::grow_tree(
                 &set2,
-                vocab,
                 min_samples_split,
                 max_depth,
                 criterion,
@@ -458,11 +458,11 @@ impl<'a> DecisionTree<'a> {
 
             DecisionNode::internal(col, value, true_branch, false_branch, summary)
         } else {
-            DecisionNode::leaf(count_classes(rows, vocab), summary)
+            DecisionNode::leaf(count_classes(rows), summary)
         }
     }
 
-    pub fn classify(&self, sample: &Sample, handle_missing: bool) -> HashMap<String, f64> {
+    pub fn classify(&self, sample: &Sample, handle_missing: bool) -> HashMap<usize, f64> {
         if handle_missing {
             self.root_node.classify_with_missing_data(sample)
         } else {
@@ -523,17 +523,15 @@ fn split_set(rows: &[Sample], column: usize, value: &SampleValue) -> (Vec<Sample
     (set1, set2)
 }
 
-fn count_classes(rows: &[Sample], vocab: &Vocabulary) -> Counter {
-    // TODO Counter[idx]
+fn count_classes(rows: &[Sample]) -> Counter {
     let mut counts = HashMap::new();
     for row in rows {
         if let Some(last) = row.last() {
             // The class label is the last value in the row
-            let class_str = match last {
-                SampleValue::String(id) => vocab.get_str(*id).unwrap_or("?").to_string(),
-                _ => last.to_string(),
+            let SampleValue::String(id) = last else {
+                unimplemented!()  // class labels are always "strings"
             };
-            *counts.entry(class_str).or_insert(0) += 1;
+            *counts.entry(*id).or_insert(0) += 1;
         }
     }
     counts
@@ -573,38 +571,191 @@ fn gini(counts: &Counter) -> f64 {
 
 // Utility functions
 
-pub fn load_csv(
+
+/// Scan csv file, validate number of columns and add target column labels to vocab
+/// Return: header
+/// Scan csv file, validate number of columns and add target column labels to vocab
+/// Return: (header, target_column_index, num_rows)
+pub fn scan_csv(
     fname: &str,
-) -> Result<(Vec<String>, Vec<Sample>, Vocabulary), Box<dyn std::error::Error>> {
+    vocab: &mut Vocabulary,
+    target_column: Option<usize>, // None means last column
+    verbose: bool,
+) -> Result<(Vec<String>, usize, usize), Box<dyn std::error::Error>> {
     let file = File::open(fname)?;
     let reader = BufReader::new(file);
     let mut lines = reader.lines();
 
+    // Read header
     let header_line = lines.next().ok_or("Empty file")??;
-    let header: Vec<String> = header_line.split(',').map(|s| s.to_string()).collect();
+    let header: Vec<String> = header_line.split(',').map(|s| s.trim().to_string()).collect();
+    let num_columns = header.len();
+    
+    // Determine target column index
+    let target_idx = target_column.unwrap_or(num_columns.saturating_sub(1));
+    if target_idx >= num_columns {
+        return Err(format!("Target column index {target_idx} is out of bounds (file has {num_columns} columns)").into());
+    }
 
-    let mut data = Vec::new();
-    let mut vocab = Vocabulary::new(); // Create the interner
+    let mut line_number = 1; // Header was line 0
+    let mut target_labels = std::collections::HashSet::new();
 
     for line_result in lines {
+        line_number += 1;
         let line = line_result?;
-        let row: Sample = line
-            .split(',')
-            .map(|s| {
-                let s = s.trim();
+        
+        let values: Vec<&str> = line.split(',').map(|s| s.trim()).collect();
+        
+        // Validate row length
+        if values.len() != num_columns {
+            return Err(format!(
+                "Line {} has {} columns, expected {} (header has {} columns)",
+                line_number, values.len(), num_columns, num_columns
+            ).into());
+        }
+
+        if values[target_idx] != "?" {
+            target_labels.insert(values[target_idx].to_string());
+        }
+    }
+
+    // Sort and intern target labels to ensure consistent ordering
+    let mut sorted_labels: Vec<String> = target_labels.into_iter().collect();
+    sorted_labels.sort();
+    
+    for label in &sorted_labels {
+        vocab.get_or_intern(label);
+    }
+
+    if verbose {
+        println!("{fname}: {} data rows", line_number - 1);
+        println!("header: {header:?}");
+        println!("target column: {} ('{}')", target_idx, header[target_idx]);
+        println!("class labels: {sorted_labels:?}");
+    }
+
+    Ok((header, target_idx, line_number - 1))
+}
+
+/// Read csv file data using pre-built vocabulary
+pub fn read_csv(
+    fname: &str,
+    vocab: &mut Vocabulary,
+    target_idx: usize,
+    expected_columns: usize,
+) -> Result<Vec<Sample>, Box<dyn std::error::Error>> {
+    let file = File::open(fname)?;
+    let reader = BufReader::new(file);
+    let mut lines = reader.lines();
+    
+    // Skip header
+    let _ = lines.next().ok_or("Empty file")??;
+    
+    let mut data = Vec::new();
+    let mut line_number = 1;
+
+    for line_result in lines {
+        line_number += 1;
+        let line = line_result?;
+        let values: Vec<&str> = line.split(',').map(|s| s.trim()).collect();
+        
+        if values.len() != expected_columns {
+            return Err(format!(
+                "Line {} has {} columns, expected {}",
+                line_number, values.len(), expected_columns
+            ).into());
+        }
+        
+        let row: Sample = values
+            .into_iter()
+            .enumerate()
+            .map(|(idx, s)| {
                 if s == "?" {
                     return SampleValue::None;
                 }
+                
+                // Target column - must already be in vocabulary
+                if idx == target_idx {
+                    if let Some(id) = vocab.get_id(s) {
+                        return SampleValue::String(id);
+                    } else {
+                        // This shouldn't happen if scan_csv was run first
+                        panic!("Unknown target label '{}' - was scan_csv run?", s);
+                    }
+                }
+                
+                // For non-target columns
                 if let Ok(f) = s.parse::<f64>() {
                     return SampleValue::Numeric(f);
                 }
-                // It's a string, so intern it!
+                
+                // String value - intern it
                 let id = vocab.get_or_intern(s);
                 SampleValue::String(id)
             })
             .collect();
+            
         data.push(row);
     }
 
-    Ok((header, data, vocab))
+    Ok(data)
+}
+
+/// Load a single CSV file 
+pub fn load_single_csv(
+    fname: &str,
+    target_column: Option<usize>,
+    verbose: bool,
+) -> Result<(Vec<String>, Vec<Sample>, Vocabulary, usize), Box<dyn std::error::Error>> {
+    let mut vocab = Vocabulary::new();
+    
+    // First pass: scan for validation and target labels
+    let (header, target_idx, _num_rows) = scan_csv(fname, &mut vocab, target_column, verbose)?;
+    let num_classes = vocab.len(); // Number of unique target labels
+    
+    // Second pass: read the data
+    let data = read_csv(fname, &mut vocab, target_idx, header.len())?;
+    
+    Ok((header, data, vocab, num_classes))
+}
+
+/// Load separate train and test CSV files
+/// Returns: header, training_samples, test samples, vocabulary, num_classes
+pub fn load_train_test_csv(
+    train_fname: &str,
+    test_fname: &str,
+    target_column: Option<usize>,
+    verbose: bool,
+) -> Result<(Vec<String>, Vec<Sample>, Vec<Sample>, Vocabulary, usize), Box<dyn std::error::Error>> {
+    let mut vocab = Vocabulary::new();
+    
+    // Scan both files to build complete vocabulary
+    let (train_header, train_target_idx, _) = scan_csv(train_fname, &mut vocab, target_column, verbose)?;
+    let num_classes = vocab.len(); // Number of unique target labels from training
+    
+    let (test_header, test_target_idx, _) = scan_csv(test_fname, &mut vocab, target_column, verbose)?;
+    
+    // Validate headers match
+    if train_header != test_header {
+        return Err(format!(
+            "Train and test files have different headers:\nTrain: {:?}\nTest: {:?}", 
+            train_header, test_header
+        ).into());
+    }
+    
+    if train_target_idx != test_target_idx {
+        return Err("Train and test files have different target column indices".into());
+    }
+    
+    // Check if test set introduced new labels
+    if vocab.len() > num_classes && verbose {
+        println!("Warning: Test set contains {} new class labels not seen in training", 
+                 vocab.len() - num_classes);
+    }
+    
+    // Read the actual data
+    let train_data = read_csv(train_fname, &mut vocab, train_target_idx, train_header.len())?;
+    let test_data = read_csv(test_fname, &mut vocab, test_target_idx, test_header.len())?;
+    
+    Ok((train_header, train_data, test_data, vocab, num_classes))
 }
