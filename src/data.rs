@@ -1,7 +1,7 @@
-use std::fs::File;
-use std::io::{BufRead, BufReader};
 use std::collections::HashMap;
-use std::hash::{Hash,Hasher};
+use std::fs::File;
+use std::hash::{Hash, Hasher};
+use std::io::{BufRead, BufReader};
 
 #[derive(Debug, Default)]
 pub struct Vocabulary {

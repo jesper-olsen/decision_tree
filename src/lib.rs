@@ -1,5 +1,5 @@
-use std::collections::HashMap;
 use crate::data::{Sample, SampleValue, Vocabulary};
+use std::collections::HashMap;
 pub mod data;
 
 pub type Counter = HashMap<usize, usize>;
@@ -84,20 +84,33 @@ impl DecisionNode {
         }
     }
 
-    pub fn classify(&self, sample: &Sample) -> Counter {
+    // Return the predicted class (most common label)
+    pub fn predict(&self, sample: &Sample) -> usize {
         if let Some(ref counts) = self.class_counts {
-            return counts.clone();
+            return *counts.iter().max_by_key(|&(_, &v)| v).unwrap().0;
         }
 
         let col = self.col.unwrap();
         let v = &sample[col];
         let branch = self.pick_branch(v);
-        branch.classify(sample)
+        branch.predict(sample)
     }
 
-    pub fn classify_with_missing_data(&self, sample: &Sample) -> HashMap<usize, f64> {
+    // Return full distribution - a reference to a leafs's counter
+    pub fn get_leaf_counts(&self, sample: &Sample) -> &Counter {
         if let Some(ref counts) = self.class_counts {
-            return counts.iter().map(|(k, &v)| (k.clone(), v as f64)).collect();
+            return counts;
+        }
+
+        let col = self.col.unwrap();
+        let v = &sample[col];
+        let branch = self.pick_branch(v);
+        branch.get_leaf_counts(sample)
+    }
+
+    pub fn classify_with_missing_data(&self, sample: &Sample) -> Counter {
+        if let Some(ref counts) = self.class_counts {
+            return counts.iter().map(|(&k, &v)| (k, v)).collect();
         }
 
         let col = self.col.unwrap();
@@ -120,24 +133,19 @@ impl DecisionNode {
             .unwrap()
             .classify_with_missing_data(sample);
 
-        let tcount: f64 = tr.values().sum();
-        let fcount: f64 = fr.values().sum();
-        let total_count = tcount + fcount;
+        let tcount: usize = tr.values().sum();
+        let fcount: usize = fr.values().sum();
 
-        if total_count == 0.0 {
-            return HashMap::new();
+        if tcount + fcount == 0 {
+            return Counter::new();
         }
 
-        let tw = tcount / total_count;
-        let fw = fcount / total_count;
-
         let mut result = HashMap::new();
-        let all_keys: std::collections::HashSet<_> = tr.keys().chain(fr.keys()).collect();
 
-        for k in all_keys {
-            let t_val = tr.get(k).unwrap_or(&0.0);
-            let f_val = fr.get(k).unwrap_or(&0.0);
-            result.insert(k.clone(), t_val * tw + f_val * fw);
+        for k in tr.keys().chain(fr.keys()) {
+            let t_val = tr.get(k).unwrap_or(&0);
+            let f_val = fr.get(k).unwrap_or(&0);
+            result.insert(*k, t_val * tcount + f_val * fcount);
         }
 
         result
@@ -358,18 +366,24 @@ impl<'a> DecisionTree<'a> {
         }
     }
 
-    pub fn classify(&self, sample: &Sample, handle_missing: bool) -> HashMap<usize, f64> {
+    // Simple prediction - returns the class label
+    pub fn predict(&self, sample: &Sample) -> usize {
+        self.root_node.predict(sample)
+    }
+
+    // Get class distribution without cloning
+    pub fn predict_proba(&self, sample: &Sample) -> &Counter {
+        self.root_node.get_leaf_counts(sample)
+    }
+
+    // Full classification with missing data handling (creates new Counter)
+    pub fn classify(&self, sample: &Sample, handle_missing: bool) -> Counter {
         if handle_missing {
             self.root_node.classify_with_missing_data(sample)
         } else {
-            self.root_node
-                .classify(sample)
-                .into_iter()
-                .map(|(k, v)| (k, v as f64))
-                .collect()
+            self.root_node.get_leaf_counts(sample).clone()
         }
     }
-
     pub fn prune(&mut self, min_gain: f64, criterion: &str, notify: bool) {
         let eval_fn = Self::eval_fn(criterion);
         self.root_node.prune(min_gain, eval_fn.as_ref(), notify);
@@ -464,4 +478,3 @@ fn gini(counts: &Counter) -> f64 {
         })
         .sum::<f64>()
 }
-

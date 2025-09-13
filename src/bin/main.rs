@@ -1,9 +1,8 @@
 use clap::Parser;
-use decision_tree::data::{Sample, SampleValue, load_single_csv, Vocabulary};
-use decision_tree::DecisionTree;
-use std::collections::HashMap;
+use decision_tree::data::{Sample, SampleValue, Vocabulary, load_single_csv};
+use decision_tree::{Counter, DecisionTree};
 
-pub fn print_classification_result(sample: &Sample, result: &HashMap<usize, f64>, vocab: &Vocabulary) {
+pub fn print_classification_result(sample: &Sample, result: &Counter, vocab: &Vocabulary) {
     if result.is_empty() {
         println!("Could not classify sample: {sample:?}");
 
@@ -27,12 +26,8 @@ pub fn print_classification_result(sample: &Sample, result: &HashMap<usize, f64>
     println!("\nDetailed Scores (Leaf Node Counts / Weights):");
 
     for (class_id, score) in sorted_results {
-        let class_name=vocab.get_str(*class_id).unwrap();
-        if score.fract() != 0.0 {
-            println!("    - {class_name:<12}: {score:.4}");
-        } else {
-            println!("    - {class_name:<12}: {}", *score as usize);
-        }
+        let class_name = vocab.get_str(*class_id).unwrap();
+        println!("    - {class_name:<12}: {score}");
     }
     println!("{}", "-".repeat(40));
 }
@@ -80,7 +75,8 @@ pub fn bigger_example(
     criterion: &str,
     plot: Option<&str>,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let (header, training_data, vocab, _num_classes) = load_single_csv("data/iris.csv", None, true)?;
+    let (header, training_data, vocab, _num_classes) =
+        load_single_csv("data/iris.csv", None, true)?;
     let mut dt = DecisionTree::train(training_data, header, &vocab, criterion, None, 2);
     println!("{dt}");
 

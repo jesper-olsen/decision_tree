@@ -1,6 +1,6 @@
 use clap::Parser;
-use decision_tree::data::{Sample, Vocabulary, load_single_csv, load_train_test_csv,SampleValue};
 use decision_tree::DecisionTree;
+use decision_tree::data::{Sample, SampleValue, Vocabulary, load_single_csv, load_train_test_csv};
 use rand::SeedableRng;
 use rand::seq::SliceRandom;
 use rand_chacha::ChaCha8Rng;
@@ -92,19 +92,9 @@ fn calculate_accuracy(model: &DecisionTree, test_data: &[Sample]) -> f64 {
         let features = &row[..row.len() - 1];
         let true_label = &row[row.len() - 1];
 
-        let result_dict = model.classify(&features.to_vec(), false);
-
-        if !result_dict.is_empty() {
-            // Find the predicted label with highest score
-            let predicted_label = result_dict
-                .iter()
-                .max_by(|a, b| a.1.partial_cmp(b.1).unwrap())
-                .map(|(k, _)| k)
-                .unwrap();
-
-            if SampleValue::String(*predicted_label) == *true_label {
-                correct_predictions += 1;
-            }
+        let predicted_label = model.predict(&features.to_vec());
+        if SampleValue::String(predicted_label) == *true_label {
+            correct_predictions += 1;
         }
     }
 
@@ -230,7 +220,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     if let Some(test_file) = args.test_file {
         // Case 1: External test file provided
-        let (header, train_data, test_data, vocab, _num_classes)=load_train_test_csv(&args.file_path, &test_file, None, true)?; 
+        let (header, train_data, test_data, vocab, _num_classes) =
+            load_train_test_csv(&args.file_path, &test_file, None, true)?;
 
         // Train
         println!(
