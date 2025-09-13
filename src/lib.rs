@@ -278,43 +278,54 @@ impl<'a> DecisionTree<'a> {
         min_samples_split: usize,
     ) -> Self {
         let eval_fn = Self::eval_fn(criterion);
-        let root = Self::grow_tree(&data, min_samples_split, max_depth, eval_fn.as_ref(), 0);
+        let row_indices: Vec<usize> = (0..data.len()).collect();
+        let root = Self::grow_tree(
+            &data,
+            &row_indices,
+            min_samples_split,
+            max_depth,
+            eval_fn.as_ref(),
+            0,
+        );
         DecisionTree::new(root, header, vocab)
     }
 
     fn grow_tree(
-        rows: &[Sample],
+        all_data: &[Sample],
+        row_indices: &[usize],
         min_samples_split: usize,
         max_depth: Option<usize>,
         criterion: &dyn Fn(&Counter) -> f64,
         depth: usize,
     ) -> DecisionNode {
-        if rows.is_empty() {
+        if row_indices.is_empty() {
             return DecisionNode::new();
         }
 
-        let current_score = criterion(&count_classes(rows));
+        let current_counts = count_classes(all_data, row_indices);
+        let current_score = criterion(&current_counts);
 
         // Pre-pruning
         let summary = Summary {
             impurity: current_score,
-            samples: rows.len(),
+            samples: row_indices.len(),
         };
 
-        if (max_depth.is_some() && depth >= max_depth.unwrap()) || (rows.len() < min_samples_split)
+        if (max_depth.is_some() && depth >= max_depth.unwrap())
+            || (row_indices.len() < min_samples_split)
         {
-            return DecisionNode::leaf(count_classes(rows), summary);
+            return DecisionNode::leaf(current_counts, summary);
         }
 
         let mut best_gain = 0.0;
         let mut best_rule: Option<(usize, SampleValue)> = None;
-        let mut best_sets: Option<(Vec<Sample>, Vec<Sample>)> = None;
+        let mut best_sets: Option<(Vec<usize>, Vec<usize>)> = None;
 
-        let column_count = rows[0].len() - 1;
+        let column_count = all_data[0].len() - 1;
         for col in 0..column_count {
             let mut column_values = std::collections::HashSet::new();
-            for row in rows {
-                column_values.insert(row[col].clone());
+            for &row_idx in row_indices {
+                column_values.insert(all_data[row_idx][col].clone());
             }
 
             for value in column_values {
@@ -322,30 +333,33 @@ impl<'a> DecisionTree<'a> {
                     continue;
                 }
 
-                let (set1, set2) = split_set(rows, col, &value);
-                if set1.is_empty() || set2.is_empty() {
+                let (set1_indices, set2_indices) = split_set(all_data, row_indices, col, &value);
+
+                if set1_indices.is_empty() || set2_indices.is_empty() {
                     continue;
                 }
 
-                let p = set1.len() as f64 / rows.len() as f64;
+                let p = set1_indices.len() as f64 / row_indices.len() as f64;
+
                 let gain = current_score
-                    - p * criterion(&count_classes(&set1))
-                    - (1.0 - p) * criterion(&count_classes(&set2));
+                    - p * criterion(&count_classes(all_data, &set1_indices))
+                    - (1.0 - p) * criterion(&count_classes(all_data, &set2_indices));
 
                 if gain > best_gain {
                     best_gain = gain;
                     best_rule = Some((col, value));
-                    best_sets = Some((set1, set2));
+                    best_sets = Some((set1_indices, set2_indices));
                 }
             }
         }
 
         if best_gain > 0.0 {
             let (col, value) = best_rule.unwrap();
-            let (set1, set2) = best_sets.unwrap();
+            let (set1_indices, set2_indices) = best_sets.unwrap();
 
             let true_branch = Box::new(Self::grow_tree(
-                &set1,
+                all_data,
+                &set1_indices,
                 min_samples_split,
                 max_depth,
                 criterion,
@@ -353,7 +367,8 @@ impl<'a> DecisionTree<'a> {
             ));
 
             let false_branch = Box::new(Self::grow_tree(
-                &set2,
+                all_data,
+                &set2_indices,
                 min_samples_split,
                 max_depth,
                 criterion,
@@ -362,7 +377,7 @@ impl<'a> DecisionTree<'a> {
 
             DecisionNode::internal(col, value, true_branch, false_branch, summary)
         } else {
-            DecisionNode::leaf(count_classes(rows), summary)
+            DecisionNode::leaf(current_counts, summary)
         }
     }
 
@@ -407,40 +422,42 @@ impl<'a> std::fmt::Display for DecisionTree<'a> {
 
 // Helper functions
 
-fn split_set(rows: &[Sample], column: usize, value: &SampleValue) -> (Vec<Sample>, Vec<Sample>) {
-    let mut set1 = Vec::new();
-    let mut set2 = Vec::new();
+fn split_set(
+    all_data: &[Sample],
+    row_indices: &[usize],
+    column: usize,
+    value: &SampleValue,
+) -> (Vec<usize>, Vec<usize>) {
+    let mut set1_indices = Vec::new();
+    let mut set2_indices = Vec::new();
 
-    for row in rows {
+    for &row_idx in row_indices {
+        let row = &all_data[row_idx];
         let v = &row[column];
+
         if matches!(v, SampleValue::None) {
-            // Missing value - duplicate row into both sets
-            set1.push(row.clone());
-            set2.push(row.clone());
+            set1_indices.push(row_idx);
+            set2_indices.push(row_idx);
         } else if matches!(value, SampleValue::Numeric(_)) {
             if v.ge(value) {
-                set1.push(row.clone());
+                set1_indices.push(row_idx);
             } else {
-                set2.push(row.clone());
+                set2_indices.push(row_idx);
             }
         } else if v.eq(value) {
-            set1.push(row.clone());
+            set1_indices.push(row_idx);
         } else {
-            set2.push(row.clone());
+            set2_indices.push(row_idx);
         }
     }
-
-    (set1, set2)
+    (set1_indices, set2_indices)
 }
 
-fn count_classes(rows: &[Sample]) -> Counter {
+fn count_classes(all_data: &[Sample], row_indices: &[usize]) -> Counter {
     let mut counts = HashMap::new();
-    for row in rows {
-        if let Some(last) = row.last() {
-            // The class label is the last value in the row
-            let SampleValue::String(id) = last else {
-                unimplemented!() // class labels are always "strings"
-            };
+    for &row_idx in row_indices {
+        let row = &all_data[row_idx];
+        if let Some(SampleValue::String(id)) = row.last() {
             *counts.entry(*id).or_insert(0) += 1;
         }
     }
