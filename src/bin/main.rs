@@ -1,5 +1,6 @@
 use clap::Parser;
-use decision_tree::{DecisionTree, Sample, SampleValue, load_single_csv, Vocabulary};
+use decision_tree::data::{Sample, SampleValue, load_single_csv, Vocabulary};
+use decision_tree::DecisionTree;
 use std::collections::HashMap;
 
 pub fn print_classification_result(sample: &Sample, result: &HashMap<usize, f64>, vocab: &Vocabulary) {
