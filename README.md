@@ -97,7 +97,7 @@ The ```demo``` cli app has two built-in examples (Tbc and Iris). The other datas
 ### 1. Demo: Train on Iris with Pruning and Visualisation
 
 ``` bash
-cargo run --bin demo 2 --plot assets/tree_iris.svg
+cargo run --bin demo 2 --plot Assets/tree_iris.svg
 ```
 
 Example output:
