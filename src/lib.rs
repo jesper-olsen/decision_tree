@@ -1,11 +1,8 @@
 use crate::data::{Sample, SampleValue, Vocabulary};
 use std::collections::HashMap;
-use std::fs::File;
-use std::io::{self, Write};
-use std::path::Path;
-use std::process::Command;
 
 pub mod data;
+pub mod export;
 
 pub type Counter = HashMap<usize, usize>;
 
@@ -32,8 +29,8 @@ pub enum NodeKind {
     Internal {
         col: usize,
         value: SampleValue,
-        true_branch: Box<Node>, // Note: This now refers to the new `Node` type
-        false_branch: Box<Node>, // And so does this
+        true_branch: Box<Node>,
+        false_branch: Box<Node>,
     },
 }
 
@@ -440,157 +437,6 @@ impl<'a> DecisionTree<'a> {
     pub fn prune(&mut self, min_gain: f64, criterion: &str, notify: bool) {
         let eval_fn = Self::eval_fn(criterion);
         self.root.prune(min_gain, eval_fn.as_ref(), notify);
-    }
-
-    /// Exports the decision tree to an image file by generating a .dot file
-    /// and calling the `dot` command-line tool.
-    ///
-    /// This function requires Graphviz to be installed and in the system's PATH.
-    pub fn export_graph(&self, filename: &str) -> io::Result<()> {
-        // 1. Build the .dot file content as a String
-        let mut dot_content = String::new();
-        dot_content.push_str("digraph Tree {\n");
-        dot_content.push_str("    node [shape=box, style=\"filled, rounded\"];\n\n");
-
-        let mut node_counter = 0;
-        self.export_node_recursive(&self.root, &mut dot_content, &mut node_counter);
-
-        dot_content.push_str("}\n");
-
-        // 2. Write the content to a temporary .dot file
-        let output_path = Path::new(filename);
-        let dot_filename = output_path.with_extension("dot");
-        let mut file = File::create(&dot_filename)?;
-        file.write_all(dot_content.as_bytes())?;
-        println!("Generated temporary file: {}", dot_filename.display());
-
-        // 3. Call the `dot` command-line tool to generate the image
-        let ext = output_path
-            .extension()
-            .unwrap_or_else(|| "png".as_ref())
-            .to_str()
-            .unwrap();
-        let status = Command::new("dot")
-            .arg(format!("-T{}", ext))
-            .arg("-o")
-            .arg(output_path)
-            .arg(&dot_filename)
-            .status()?;
-
-        if status.success() {
-            println!("Decision tree exported to {}", output_path.display());
-            // 4. Clean up the temporary .dot file
-            std::fs::remove_file(&dot_filename)?;
-        } else {
-            eprintln!(
-                "Error: Graphviz `dot` command failed. Is Graphviz installed and in your PATH?"
-            );
-            eprintln!(
-                "The DOT source file was saved at: {}",
-                dot_filename.display()
-            );
-        }
-
-        Ok(())
-    }
-
-    /// Recursive helper to generate the .dot format string for a node.
-    /// Returns the unique ID of the node it just processed.
-    fn export_node_recursive(
-        &self,
-        node: &Node,
-        dot_content: &mut String,
-        counter: &mut usize,
-    ) -> String {
-        let node_id = format!("node{}", *counter);
-        *counter += 1;
-
-        // The logic inside this match block is the only part that changes.
-        let (label, fillcolor) = match &node.kind {
-            // --- LEAF NODE ---
-            NodeKind::Leaf { class_counts } => {
-                let mut sorted_counts: Vec<_> = class_counts.iter().collect();
-                sorted_counts.sort_by_key(|&(k, _)| k);
-
-                // Format each class count as its own table row for alignment
-                let counts_rows = sorted_counts
-                    .iter()
-                    .map(|(k, v)| {
-                        let class_name = self.vocab.get_str(**k).unwrap_or("?");
-                        format!(r#"<TR><TD ALIGN="LEFT">{}: {}</TD></TR>"#, class_name, v)
-                    })
-                    .collect::<String>();
-
-                // Use a borderless table to enforce left alignment for all content.
-                let label_html = format!(
-                    r#"<
-                    <TABLE BORDER="0" CELLBORDER="0" CELLSPACING="0">
-                    <TR><TD><B>Leaf</B></TD></TR>
-                    {}
-                    <TR><TD ALIGN="LEFT">impurity = {:.3}</TD></TR>
-                    <TR><TD ALIGN="LEFT">samples = {}</TD></TR>
-                    </TABLE>
-                    >"#,
-                    counts_rows, node.summary.impurity, node.summary.samples
-                );
-                (label_html, "#e58139aa")
-            }
-            // --- INTERNAL NODE ---
-            NodeKind::Internal {
-                col,
-                value,
-                true_branch,
-                false_branch,
-            } => {
-                let column_name = &self.header[*col];
-                let condition = match value {
-                    SampleValue::Numeric(n) => format!("{} &ge; {:.2}", column_name, n),
-                    SampleValue::String(id) => {
-                        format!(
-                            "{} == {}",
-                            column_name,
-                            self.vocab.get_str(*id).unwrap_or("?")
-                        )
-                    }
-                    SampleValue::None => format!("{} == None", column_name),
-                };
-
-                // Also use a table here for consistency
-                let label_html = format!(
-                    r#"<
-                    <TABLE BORDER="0" CELLBORDER="0" CELLSPACING="0">
-                    <TR><TD><B>{}</B></TD></TR>
-                    <TR><TD ALIGN="LEFT">impurity = {:.3}</TD></TR>
-                    <TR><TD ALIGN="LEFT">samples = {}</TD></TR>
-                    </TABLE>
-                    >"#,
-                    condition.replace('<', "&lt;").replace('>', "&gt;"),
-                    node.summary.impurity,
-                    node.summary.samples
-                );
-
-                let true_child_id = self.export_node_recursive(true_branch, dot_content, counter);
-                let false_child_id = self.export_node_recursive(false_branch, dot_content, counter);
-
-                dot_content.push_str(&format!(
-                    "    {} -> {} [label=\"True\"];\n",
-                    node_id, true_child_id
-                ));
-                dot_content.push_str(&format!(
-                    "    {} -> {} [label=\"False\"];\n",
-                    node_id, false_child_id
-                ));
-
-                (label_html, "#399de5aa")
-            }
-        };
-
-        dot_content.push_str(&format!(
-            "    {} [label={}, fillcolor=\"{}\"];\n",
-            node_id, label, fillcolor
-        ));
-
-        node_id
     }
 }
 

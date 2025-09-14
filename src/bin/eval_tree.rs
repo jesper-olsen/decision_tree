@@ -1,6 +1,7 @@
 use clap::Parser;
 use decision_tree::DecisionTree;
 use decision_tree::data::{Sample, SampleValue, Vocabulary, load_single_csv, load_train_test_csv};
+use decision_tree::export::export_graph;
 use rand::SeedableRng;
 use rand::seq::SliceRandom;
 use rand_chacha::ChaCha8Rng;
@@ -209,7 +210,7 @@ fn split_eval(
     }
 
     if let Some(ref plot_file) = args.plot {
-        model.export_graph(plot_file)?;
+        export_graph(&model, plot_file)?;
     }
 
     println!("\nEvaluating model accuracy on the test set...");
@@ -251,7 +252,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
 
         if let Some(ref plot_file) = args.plot {
-            model.export_graph(plot_file)?;
+            export_graph(&model, plot_file)?;
         }
 
         println!("\nEvaluating model accuracy on the external test set...");

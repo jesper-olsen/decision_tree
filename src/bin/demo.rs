@@ -1,5 +1,6 @@
 use clap::Parser;
 use decision_tree::data::{Sample, SampleValue, Vocabulary, load_single_csv};
+use decision_tree::export::export_graph;
 use decision_tree::{Counter, DecisionTree};
 
 pub fn print_classification_result(sample: &Sample, result: &Counter, vocab: &Vocabulary) {
@@ -65,7 +66,7 @@ pub fn small_example(
     print_classification_result(&missing_sample, &result2, &vocab);
 
     if let Some(filename) = plot {
-        dt.export_graph(filename)?;
+        export_graph(&dt, filename)?;
     }
 
     Ok(())
@@ -107,7 +108,7 @@ pub fn bigger_example(
     print_classification_result(&missing_sample, &result2, &vocab);
 
     if let Some(filename) = plot {
-        dt.export_graph(filename)?;
+        export_graph(&dt, filename)?;
     }
 
     Ok(())
