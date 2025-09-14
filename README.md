@@ -1,20 +1,22 @@
-# Decision Tree
+# Decision Tree in Rust
 
-A from-scratch implementation of a CART (Classification and Regression Tree) algorithm in Rust. This repository provides a library and a command-line script, eval_tree, for training, evaluating, and visualizing models on CSV datasets.
+A from-scratch implementation of a CART (Classification and Regression Tree) algorithm in Rust. This project is intended as a learning tool and a demonstration of a performant machinelearning model built in a systems language.
+
+It provides a core ```decision_tree``` library and a command-line application (```eval_tree```) for training, evaluatin, and visualising modelson CSV datasets.
 
 ## Features
 
-* Builds a decision tree from a CSV dataset.
-* Supports both **Gini Impurity** and **Information Gain (Entropy)** as splitting criteria.
-* Implements two types of pruning to prevent overfitting:
-  * Pre-pruning: `max_depth` and `min_samples_split`.
-  * post-pruning: Based on a minimum gain threshold.
-* Classifies new data samples, including robust handling of missing feature values (e.g., `?`).
-* Provides three robust evaluation methods:
+* **Core Algorithm**: Builds a decision tree from CSV data using either **Gini Impurity** or **Information Gain** (Entropy) as splitting criteria.
+* **Overfitting Control**: Implements two robust types of pruning:
+  * **Pre-pruning**: via ```max_depth``` and ```min_samples_split```.
+  * **Post-pruning**: Merges branches based on a minimum gain threshold.
+* **Classification**: Classifies new data samples, with robust handling of missing feature values (e.g., ```?``` or empty fields).
+* **Flexible Evaluation**: Provides three evaluation methods for performance estimates:
   * Simple train/test split.
-  * K-Fold Cross-Validation for a stable performance estimate.
+  * K-Fold Cross-Validation.
   * Evaluation on a separate, pre-defined test file.
-* Visualises the trained decision tree into an image file (.png, .svg, etc.) using Graphviz.
+* **Visualisation**: Renders the trained decision tree into an image file (.png, .svg, etc.) using Graphviz for easy inspection.
+* Builds a decision tree from a CSV dataset.
 
 
 ## Prerequisites
@@ -34,18 +36,18 @@ This project requires **Graphviz** to be installed on your system to render the 
     choco install graphviz
    
 
-## Installation
+## Building the Project
 
-Create a virtual environment and install the required Python packages from `requirements.txt`:
+Clone the repository and build the project in release mode for optimal performance:
 
     ```bash
     cargo build --release
     ```
+The executables will be located at ```target/release/demo``` and ```target/release/eval_tree``.
 
-## Usage
+## Usage (eval_tree)
 
-The primary script for training and evaluation is ```eval_tree```.
-Run the script from your terminal, specifying the dataset and the desired options:
+The ```eval_tree``` application is the primary tool for training and evaluation. Run it from your terminal, specifying the dataset and the desired options.
 
 ``` text
 Usage: eval_tree [OPTIONS] <FILE_PATH>
@@ -78,7 +80,7 @@ Options:
 
 ## Examples
 
-In the data folder there are some commonly used datasets in .cvs format:
+The ```data``` folder contains several standard CSV datasets for testing.
 
 | Name              | #Samples   | #Classes   | #Features |
 | :-----            | ---:       | ---:       | ---:      |
@@ -90,97 +92,30 @@ In the data folder there are some commonly used datasets in .cvs format:
 | Adult test        |  16282     |      2     | 14        |
 
 
-### 1. Pruning and Visualisation
+### 1. Simple Demo: Train on Iris, Prune, and Visualise
 
-The ```demo``` cli app has two built-in examples (Tbc and Iris). The other datasets can be exploted with ```eval_tree```.
-
-### 1. Demo: Train on Iris with Pruning and Visualisation
+The ```demo``` application provides a simple, hardcoded showcase. The command below runs example 2 (the Iris dataset) and plots the resulting tree.
 
 ``` bash
 cargo run --bin demo 2 --plot Assets/tree_iris.svg
 ```
-
-Example output:
-``` text
-data/iris.csv: 150 data rows
-header: ["SepalLength", "SepalWidth", "PetalLength", "PetalWidth", "Species"]
-target column: 4 ('Species')
-class labels: ["setosa", "versicolor", "virginica"]
-
-PetalLength >= 3?
-yes -> PetalWidth >= 1.8?
-    yes -> PetalLength >= 4.9?
-        yes -> 2: 43
-        no  -> SepalLength >= 6?
-            yes -> 2: 2
-            no  -> 1: 1
-    no  -> PetalLength >= 5?
-        yes -> PetalWidth >= 1.6?
-            yes -> SepalLength >= 7.2?
-                yes -> 2: 1
-                no  -> 1: 2
-            no  -> 2: 3
-        no  -> PetalWidth >= 1.7?
-            yes -> 2: 1
-            no  -> 1: 47
-no  -> 0: 50
-
-A branch was pruned: gain = 0.1461
-
-PetalLength >= 3?
-yes -> PetalWidth >= 1.8?
-    yes -> PetalLength >= 4.9?
-        yes -> 2: 43
-        no  -> SepalLength >= 6?
-            yes -> 2: 2
-            no  -> 1: 1
-    no  -> PetalLength >= 5?
-        yes -> PetalWidth >= 1.6?
-            yes -> SepalLength >= 7.2?
-                yes -> 2: 1
-                no  -> 1: 2
-            no  -> 2: 3
-        no  -> 1: 47, 2: 1
-no  -> 0: 50
-
---- Classification Examples ---
-----------------------------------------
-Input Sample: [Numeric(6.0), Numeric(2.2), Numeric(5.0), Numeric(1.5)]
---> Predicted Class: 'virginica'
-
-Detailed Scores (Leaf Node Counts / Weights):
-    - virginica   : 3
-----------------------------------------
-----------------------------------------
-Input Sample: [None, None, None, Numeric(1.5)]
---> Predicted Class: 'versicolor'
-
-Detailed Scores (Leaf Node Counts / Weights):
-    - versicolor  : 28
-    - setosa      : 17
-    - virginica   : 1
-----------------------------------------
-Generated temporary file: assets/tree_iris.dot
-Decision tree exported to assets/tree_iris.svg
-```
+This will print the tree structure, classification examples, and save the following visualisation:
 
 | ![Iris Decision Tree](Assets/tree_iris.svg) |
 | --- |
 
 
-### 2. Eval: Simple Split with Pruning 
+### 2. Train/Test Split with Post-Pruning
 
-Train on the Winequality-red dataset [3] using an 80/20 split, apply post-pruning (--prune):
+Train on the Winequality-red dataset [3] using an 80/20 split, apply post-pruning:
 
 ``` bash
 cargo run --bin eval_tree --release -- data/winequality-red.csv --split-ratio 0.8 --prune 0.4
 ```
-Example Output:
+
+(Note: ```--release``` is recommended for larger datasets.)
+
 ``` text
-data/winequality-red.csv: 1599 data rows
-header: ["fixed acidity", "volatile acidity", "citric acid", "residual sugar", "chlorides", "free sulfur dioxide", "total sulfur dioxide", "density", "pH", "sulphates", "alcohol", "quality"]
-target column: 11 ('quality')
-class labels: ["3", "4", "5", "6", "7", "8"]
 Dataset loaded successfully with 1599 rows.
 
 Performing a simple train/test split...
@@ -201,10 +136,9 @@ Model Accuracy: 65.00%
 ------------------------------
 ```
 
-### 2. 10-Fold Cross Validation on the Wine Quality Dataset
+### 3. K-Fold Cross Validation 
 
-Perform a robust evaluation on the Wine Quality dataset [3], replicating the methodology from the original paper.
-The original paper reported an accuracy of 62% for red wine and 65% for white wine (SVM classifier).
+Perform a robust 10-fold cross-validation on the Wine Quality dataset [3].
 
 ``` bash
 cargo run --bin eval_tree --release -- data/winequality-red.csv -k 10 --prune 0.3
@@ -212,10 +146,6 @@ cargo run --bin eval_tree --release -- data/winequality-red.csv -k 10 --prune 0.
 
 Example Output:
 ```
-data/winequality-red.csv: 1599 data rows
-header: ["fixed acidity", "volatile acidity", "citric acid", "residual sugar", "chlorides", "free sulfur dioxide", "total sulfur dioxide", "density", "pH", "sulphates", "alcohol", "quality"]
-target column: 11 ('quality')
-class labels: ["3", "4", "5", "6", "7", "8"]
 Dataset loaded successfully with 1599 rows.
 
 Performing 10-fold cross-validation...
@@ -242,26 +172,18 @@ Standard Deviation: 4.35%
 ==============================
 ```
 
-### 3. Pre-Pruning with a separate Test Set (Adult Dataset)
+### 4. Separate Test Set & Pre-Pruning (Adult Dataset)
 
-Train on the Adult (US Census) dataset, which has a pre-defined train/test split and contains missing values. Use
-pre-pruning (`--max_depth` and `--min_samples_split`) to control tree size and prevent overfitting.
+Train on the large Adult dataset, which has pre-defined train/test split and contains missing values. Use pre-pruning (`--max_depth` and `--min_samples_split`) to control tree size and prevent overfitting.
 
 ``` bash
 cargo run --bin eval_tree --release -- data/adult_train.csv --test-file data/adult_test.csv --max-depth 10 --min-samples-split 10
 ```
-Example Output: 
+
 ``` text
 data/adult_train.csv: 32561 data rows
-header: ["age", "workclass", "fnlwgt", "education", "education-num", "marital-status", "occupation", "relationship", "race", "sex", "capital-gain", "capital-loss", "hours-per-week", "native-country", "income"]
-target column: 14 ('income')
-class labels: ["<=50K", ">50K"]
-
 data/adult_test.csv: 16281 data rows
-header: ["age", "workclass", "fnlwgt", "education", "education-num", "marital-status", "occupation", "relationship", "race", "sex", "capital-gain", "capital-loss", "hours-per-week", "native-country", "income"]
-target column: 14 ('income')
-class labels: ["<=50K", ">50K"]
-
+-------------------------------
 Training decision tree (criterion: gini)...
 Trained a model with 553 nodes
 
@@ -274,9 +196,8 @@ Model Accuracy: 86.03%
 
 ## References
 
-1. [TBC Dataset](https://www.kaggle.com/datasets/tawsifurrahman/tuberculosis-tb-chest-xray-dataset)
-2. [Iris Dataset](https://archive.ics.uci.edu/dataset/53/iris)
-3. [Wine Quality Dataset](https://archive.ics.uci.edu/dataset/186/wine+quality)
-4. [Modeling wine preferences by data mining from physicochemical properties, Paulo Cortez et al.](https://repositorium.sdum.uminho.pt/bitstream/1822/10029/1/wine5.pdf)
-5. [Adult (1994 Census) Dataset](https://archive.ics.uci.edu/dataset/2/adult)
+1. [Iris Dataset](https://archive.ics.uci.edu/dataset/53/iris)
+2. [Wine Quality Dataset](https://archive.ics.uci.edu/dataset/186/wine+quality)
+3. [Modeling wine preferences by data mining from physicochemical properties, Paulo Cortez et al.](https://repositorium.sdum.uminho.pt/bitstream/1822/10029/1/wine5.pdf)
+4. [Adult (1994 Census) Dataset](https://archive.ics.uci.edu/dataset/2/adult)
 
