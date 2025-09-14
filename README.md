@@ -164,7 +164,7 @@ Generated temporary file: assets/tree_iris.dot
 Decision tree exported to assets/tree_iris.svg
 ```
 
-| ![Iris Decision Tree](assets/tree_iris.svg) |
+| ![Iris Decision Tree](Assets/tree_iris.svg) |
 | --- |
 
 
