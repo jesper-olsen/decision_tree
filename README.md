@@ -2,7 +2,7 @@
 
 A from-scratch implementation of a CART (Classification and Regression Tree) algorithm in Rust. This project is intended as a learning tool and a demonstration of a performant machine learning model built in a systems language.
 
-It provides a core ```decision_tree``` library and a command-line application (```eval_tree```) for training, evaluatin, and visualising modelson CSV datasets.
+It provides a core ```decision_tree``` library and a command-line application (```eval_tree```) for training, evaluating, and visualising modelson CSV datasets.
 
 ## Features
 
@@ -40,7 +40,7 @@ This project requires **Graphviz** to be installed on your system to render the 
 
 Clone the repository and build the project in release mode for optimal performance:
 
-    ```bash
+    ``` bash
     cargo build --release
     ```
 The executables will be located at ```target/release/demo``` and ```target/release/eval_tree``.
