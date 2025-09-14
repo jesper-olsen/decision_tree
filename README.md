@@ -1,6 +1,6 @@
 # Decision Tree in Rust
 
-A from-scratch implementation of a CART (Classification and Regression Tree) algorithm in Rust. This project is intended as a learning tool and a demonstration of a performant machinelearning model built in a systems language.
+A from-scratch implementation of a CART (Classification and Regression Tree) algorithm in Rust. This project is intended as a learning tool and a demonstration of a performant machine learning model built in a systems language.
 
 It provides a core ```decision_tree``` library and a command-line application (```eval_tree```) for training, evaluatin, and visualising modelson CSV datasets.
 
