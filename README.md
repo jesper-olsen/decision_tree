@@ -40,9 +40,9 @@ This project requires **Graphviz** to be installed on your system to render the 
 
 Clone the repository and build the project in release mode for optimal performance:
 
-    ``` bash
-    cargo build --release
-    ```
+``` bash
+cargo build --release
+```
 The executables will be located at ```target/release/demo``` and ```target/release/eval_tree``.
 
 ## Usage (eval_tree)
