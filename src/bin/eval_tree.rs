@@ -171,7 +171,12 @@ fn kfold_eval(data: Vec<Sample>, header: Vec<String>, vocab: Vocabulary, args: &
     println!("{}", "=".repeat(30));
 }
 
-fn split_eval(data: Vec<Sample>, header: Vec<String>, vocab: Vocabulary, args: &Args) {
+fn split_eval(
+    data: Vec<Sample>,
+    header: Vec<String>,
+    vocab: Vocabulary,
+    args: &Args,
+) -> Result<(), Box<dyn std::error::Error>> {
     println!("\nPerforming a simple train/test split...");
     let (train_data, test_data) = split_data(&data, args.split_ratio);
     println!(
@@ -204,7 +209,7 @@ fn split_eval(data: Vec<Sample>, header: Vec<String>, vocab: Vocabulary, args: &
     }
 
     if let Some(ref plot_file) = args.plot {
-        model.export_graph(plot_file);
+        model.export_graph(plot_file)?;
     }
 
     println!("\nEvaluating model accuracy on the test set...");
@@ -213,6 +218,7 @@ fn split_eval(data: Vec<Sample>, header: Vec<String>, vocab: Vocabulary, args: &
     println!("\n--- Evaluation Result ---");
     println!("Model Accuracy: {accuracy:.2}%");
     println!("{}", "-".repeat(30));
+    Ok(())
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -245,7 +251,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
 
         if let Some(ref plot_file) = args.plot {
-            model.export_graph(plot_file);
+            model.export_graph(plot_file)?;
         }
 
         println!("\nEvaluating model accuracy on the external test set...");
@@ -262,7 +268,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         if args.k_folds > 1 {
             kfold_eval(data, header, vocab, &args);
         } else {
-            split_eval(data, header, vocab, &args);
+            split_eval(data, header, vocab, &args)?;
         }
     }
 

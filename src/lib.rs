@@ -1,5 +1,10 @@
 use crate::data::{Sample, SampleValue, Vocabulary};
 use std::collections::HashMap;
+use std::fs::File;
+use std::io::{self, Write};
+use std::path::Path;
+use std::process::Command;
+
 pub mod data;
 
 pub type Counter = HashMap<usize, usize>;
@@ -118,48 +123,46 @@ impl Node {
         }
     }
 
-    pub fn classify_with_missing_data(&self, sample: &Sample) -> Counter {
-        let mut current_node = self;
-        loop {
+    /// Classifies a sample, handling missing data by exploring all possible paths
+    /// and returning a weighted sum of the leaf node counts.
+    pub fn classify_with_missing_data(&self, sample: &Sample) -> HashMap<usize, f64> {
+        let mut weighted_counts: HashMap<usize, f64> = HashMap::new();
+        let mut stack: Vec<(&Node, f64)> = vec![(self, 1.0)];
+
+        while let Some((current_node, weight)) = stack.pop() {
             match &current_node.kind {
-                NodeKind::Leaf { class_counts } => return class_counts.clone(),
+                NodeKind::Leaf { class_counts } => {
+                    for (&class, &count) in class_counts {
+                        *weighted_counts.entry(class).or_insert(0.0) += count as f64 * weight;
+                    }
+                }
                 NodeKind::Internal {
                     col,
                     value,
                     true_branch,
                     false_branch,
-                    ..
                 } => {
                     let v = &sample[*col];
-                    if *v == SampleValue::None {
-                        // Handle missing feature
-                        let tr = true_branch.classify_with_missing_data(sample);
-                        let fr = false_branch.classify_with_missing_data(sample);
-
-                        let tcount: usize = tr.values().sum();
-                        let fcount: usize = fr.values().sum();
-
-                        if tcount + fcount == 0 {
-                            return Counter::new();
+                    if matches!(v, SampleValue::None) {
+                        let total_samples = current_node.summary.samples as f64;
+                        if total_samples > 0.0 {
+                            let true_samples = true_branch.summary.samples as f64;
+                            let p_true = true_samples / total_samples;
+                            stack.push((true_branch, weight * p_true));
+                            stack.push((false_branch, weight * (1.0 - p_true)));
                         }
-
-                        let mut result = Counter::new();
-                        for k in tr.keys().chain(fr.keys()) {
-                            let t_val = tr.get(k).unwrap_or(&0);
-                            let f_val = fr.get(k).unwrap_or(&0);
-                            result.insert(*k, t_val * tcount + f_val * fcount);
-                        }
-
-                        return result;
+                    } else {
+                        let cond = match (v, value) {
+                            (SampleValue::Numeric(_), _) => v.ge(value),
+                            _ => v.eq(value),
+                        };
+                        let branch = if cond { true_branch } else { false_branch };
+                        stack.push((branch, weight));
                     }
-                    let cond = match (v, value) {
-                        (SampleValue::Numeric(_), _) => v.ge(value),
-                        _ => v.eq(value),
-                    };
-                    current_node = if cond { true_branch } else { false_branch };
                 }
             }
         }
+        weighted_counts
     }
 
     pub fn prune(&mut self, min_gain: f64, criterion: &dyn Fn(&Counter) -> f64, notify: bool) {
@@ -169,11 +172,15 @@ impl Node {
             ..
         } = &mut self.kind
         {
-            // Recursive calls
-            true_branch.prune(min_gain, criterion, notify);
-            false_branch.prune(min_gain, criterion, notify);
+            // Recursive calls (post-order traversal, so we prune children first)
+            if let NodeKind::Internal { .. } = true_branch.kind {
+                true_branch.prune(min_gain, criterion, notify);
+            }
+            if let NodeKind::Internal { .. } = false_branch.kind {
+                false_branch.prune(min_gain, criterion, notify);
+            }
 
-            // Check if both children are now leaves
+            // Check if both children are now leaves, making this node a candidate for merging
             if let (
                 NodeKind::Leaf {
                     class_counts: true_counts,
@@ -183,19 +190,21 @@ impl Node {
                 },
             ) = (&true_branch.kind, &false_branch.kind)
             {
-                let mut merged_counts = true_counts.clone();
-                for (k, v) in false_counts {
-                    *merged_counts.entry(k.clone()).or_insert(0) += v;
-                }
-
-                let merged_impurity = criterion(&merged_counts);
-                let total_samples: usize = merged_counts.values().sum();
                 let true_samples: usize = true_counts.values().sum();
-                let p_true = true_samples as f64 / total_samples as f64;
+                let false_samples: usize = false_counts.values().sum();
+                let total_samples: usize = true_samples + false_samples;
+                if total_samples == 0 {
+                    return;
+                };
+                let p_true: f64 = true_samples as f64 / total_samples as f64;
 
+                let mut merged_counts = true_counts.clone();
+                for (&k, &v) in false_counts {
+                    *merged_counts.entry(k).or_insert(0) += v;
+                }
+                let merged_impurity = criterion(&merged_counts);
                 let child_impurity =
-                    p_true * criterion(true_counts) + (1.0 - p_true) * criterion(false_counts);
-
+                    p_true * criterion(&true_counts) + (1.0 - p_true) * criterion(&false_counts);
                 let gain = merged_impurity - child_impurity;
 
                 if gain < min_gain {
@@ -412,22 +421,176 @@ impl<'a> DecisionTree<'a> {
         self.root.get_leaf_counts(sample)
     }
 
-    // Full classification with missing data handling (creates new Counter)
+    /// Classifies a sample, returning a map of class IDs to their scores/counts.
+    /// Handles missing data by calculating weighted scores and rounding them to the
+    /// nearest integer count.
     pub fn classify(&self, sample: &Sample, handle_missing: bool) -> Counter {
         if handle_missing {
-            self.root.classify_with_missing_data(sample)
+            let weighted_counts = self.root.classify_with_missing_data(sample);
+
+            weighted_counts
+                .into_iter()
+                .map(|(k, v)| (k, v.round() as usize))
+                .collect()
         } else {
             self.root.get_leaf_counts(sample).clone()
         }
     }
+
     pub fn prune(&mut self, min_gain: f64, criterion: &str, notify: bool) {
         let eval_fn = Self::eval_fn(criterion);
         self.root.prune(min_gain, eval_fn.as_ref(), notify);
     }
 
-    pub fn export_graph(&self, filename: &str) {
-        // Stub implementation as requested
-        println!("export_graph not implemented - would export to {filename}");
+    /// Exports the decision tree to an image file by generating a .dot file
+    /// and calling the `dot` command-line tool.
+    ///
+    /// This function requires Graphviz to be installed and in the system's PATH.
+    pub fn export_graph(&self, filename: &str) -> io::Result<()> {
+        // 1. Build the .dot file content as a String
+        let mut dot_content = String::new();
+        dot_content.push_str("digraph Tree {\n");
+        dot_content.push_str("    node [shape=box, style=\"filled, rounded\"];\n\n");
+
+        let mut node_counter = 0;
+        self.export_node_recursive(&self.root, &mut dot_content, &mut node_counter);
+
+        dot_content.push_str("}\n");
+
+        // 2. Write the content to a temporary .dot file
+        let output_path = Path::new(filename);
+        let dot_filename = output_path.with_extension("dot");
+        let mut file = File::create(&dot_filename)?;
+        file.write_all(dot_content.as_bytes())?;
+        println!("Generated temporary file: {}", dot_filename.display());
+
+        // 3. Call the `dot` command-line tool to generate the image
+        let ext = output_path
+            .extension()
+            .unwrap_or_else(|| "png".as_ref())
+            .to_str()
+            .unwrap();
+        let status = Command::new("dot")
+            .arg(format!("-T{}", ext))
+            .arg("-o")
+            .arg(output_path)
+            .arg(&dot_filename)
+            .status()?;
+
+        if status.success() {
+            println!("Decision tree exported to {}", output_path.display());
+            // 4. Clean up the temporary .dot file
+            std::fs::remove_file(&dot_filename)?;
+        } else {
+            eprintln!(
+                "Error: Graphviz `dot` command failed. Is Graphviz installed and in your PATH?"
+            );
+            eprintln!(
+                "The DOT source file was saved at: {}",
+                dot_filename.display()
+            );
+        }
+
+        Ok(())
+    }
+
+    /// Recursive helper to generate the .dot format string for a node.
+    /// Returns the unique ID of the node it just processed.
+    fn export_node_recursive(
+        &self,
+        node: &Node,
+        dot_content: &mut String,
+        counter: &mut usize,
+    ) -> String {
+        let node_id = format!("node{}", *counter);
+        *counter += 1;
+
+        // The logic inside this match block is the only part that changes.
+        let (label, fillcolor) = match &node.kind {
+            // --- LEAF NODE ---
+            NodeKind::Leaf { class_counts } => {
+                let mut sorted_counts: Vec<_> = class_counts.iter().collect();
+                sorted_counts.sort_by_key(|&(k, _)| k);
+
+                // Format each class count as its own table row for alignment
+                let counts_rows = sorted_counts
+                    .iter()
+                    .map(|(k, v)| {
+                        let class_name = self.vocab.get_str(**k).unwrap_or("?");
+                        format!(r#"<TR><TD ALIGN="LEFT">{}: {}</TD></TR>"#, class_name, v)
+                    })
+                    .collect::<String>();
+
+                // Use a borderless table to enforce left alignment for all content.
+                let label_html = format!(
+                    r#"<
+                    <TABLE BORDER="0" CELLBORDER="0" CELLSPACING="0">
+                    <TR><TD><B>Leaf</B></TD></TR>
+                    {}
+                    <TR><TD ALIGN="LEFT">impurity = {:.3}</TD></TR>
+                    <TR><TD ALIGN="LEFT">samples = {}</TD></TR>
+                    </TABLE>
+                    >"#,
+                    counts_rows, node.summary.impurity, node.summary.samples
+                );
+                (label_html, "#e58139aa")
+            }
+            // --- INTERNAL NODE ---
+            NodeKind::Internal {
+                col,
+                value,
+                true_branch,
+                false_branch,
+            } => {
+                let column_name = &self.header[*col];
+                let condition = match value {
+                    SampleValue::Numeric(n) => format!("{} &ge; {:.2}", column_name, n),
+                    SampleValue::String(id) => {
+                        format!(
+                            "{} == {}",
+                            column_name,
+                            self.vocab.get_str(*id).unwrap_or("?")
+                        )
+                    }
+                    SampleValue::None => format!("{} == None", column_name),
+                };
+
+                // Also use a table here for consistency
+                let label_html = format!(
+                    r#"<
+                    <TABLE BORDER="0" CELLBORDER="0" CELLSPACING="0">
+                    <TR><TD><B>{}</B></TD></TR>
+                    <TR><TD ALIGN="LEFT">impurity = {:.3}</TD></TR>
+                    <TR><TD ALIGN="LEFT">samples = {}</TD></TR>
+                    </TABLE>
+                    >"#,
+                    condition.replace('<', "&lt;").replace('>', "&gt;"),
+                    node.summary.impurity,
+                    node.summary.samples
+                );
+
+                let true_child_id = self.export_node_recursive(true_branch, dot_content, counter);
+                let false_child_id = self.export_node_recursive(false_branch, dot_content, counter);
+
+                dot_content.push_str(&format!(
+                    "    {} -> {} [label=\"True\"];\n",
+                    node_id, true_child_id
+                ));
+                dot_content.push_str(&format!(
+                    "    {} -> {} [label=\"False\"];\n",
+                    node_id, false_child_id
+                ));
+
+                (label_html, "#399de5aa")
+            }
+        };
+
+        dot_content.push_str(&format!(
+            "    {} [label={}, fillcolor=\"{}\"];\n",
+            node_id, label, fillcolor
+        ));
+
+        node_id
     }
 }
 

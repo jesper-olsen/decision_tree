@@ -65,7 +65,7 @@ pub fn small_example(
     print_classification_result(&missing_sample, &result2, &vocab);
 
     if let Some(filename) = plot {
-        dt.export_graph(filename);
+        dt.export_graph(filename)?;
     }
 
     Ok(())
@@ -107,7 +107,7 @@ pub fn bigger_example(
     print_classification_result(&missing_sample, &result2, &vocab);
 
     if let Some(filename) = plot {
-        dt.export_graph(filename);
+        dt.export_graph(filename)?;
     }
 
     Ok(())
