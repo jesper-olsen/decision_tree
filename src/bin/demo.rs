@@ -1,7 +1,8 @@
 use clap::Parser;
 use decision_tree::data::{Sample, SampleValue, Vocabulary, load_single_csv};
 use decision_tree::export::export_graph;
-use decision_tree::{Counter, DecisionTree};
+use decision_tree::node::Counter;
+use decision_tree::tree::DecisionTree;
 
 pub fn print_classification_result(sample: &Sample, result: &Counter, vocab: &Vocabulary) {
     if result.is_empty() {

@@ -1,7 +1,7 @@
 use clap::Parser;
-use decision_tree::DecisionTree;
 use decision_tree::data::{Sample, SampleValue, Vocabulary, load_single_csv, load_train_test_csv};
 use decision_tree::export::export_graph;
+use decision_tree::tree::DecisionTree;
 use rand::SeedableRng;
 use rand::seq::SliceRandom;
 use rand_chacha::ChaCha8Rng;

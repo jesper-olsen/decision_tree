@@ -1,5 +1,6 @@
-use crate::data::Vocabulary;
-use crate::{DecisionTree, Node, NodeKind, SampleValue};
+use crate::data::{SampleValue, Vocabulary};
+use crate::node::{Node, NodeKind};
+use crate::tree::DecisionTree;
 use std::fs::File;
 use std::io::{self, Write};
 use std::path::Path;
