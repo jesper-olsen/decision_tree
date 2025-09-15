@@ -93,9 +93,8 @@ impl<'a> DecisionTree<'a> {
             samples: row_indices.len(),
         };
 
-        if (max_depth.is_some() && depth >= max_depth.unwrap())
-            || (row_indices.len() < min_samples_split)
-        {
+        let is_max_depth_reached = max_depth.map_or(false, |max| depth >= max);
+        if is_max_depth_reached || row_indices.len() < min_samples_split {
             return Node::leaf(current_counts, summary);
         }
 
@@ -137,8 +136,12 @@ impl<'a> DecisionTree<'a> {
         }
 
         if best_gain > 0.0 {
-            let (col, value) = best_rule.unwrap();
-            let (set1_indices, set2_indices) = best_sets.unwrap();
+            let Some((col, value)) = best_rule else {
+                unreachable!("best_gain > 0.0 but best_rule is None");
+            };
+            let Some((set1_indices, set2_indices)) = best_sets else {
+                unreachable!("best_gain > 0.0 but best_sets is None");
+            };
 
             let true_branch = Box::new(Self::grow_tree(
                 all_data,
@@ -222,7 +225,7 @@ fn split_set(
         let v = &row[column];
 
         if matches!(v, SampleValue::None) {
-            // missing value - add row to both sets
+            // Missing value - distribute sample to both child nodes to ensures all data is used
             set1_indices.push(row_idx);
             set2_indices.push(row_idx);
         } else if matches!(value, SampleValue::Numeric(_)) {
@@ -346,6 +349,9 @@ impl<'a> DecisionTreeBuilder<'a> {
         data: Vec<Sample>,
         header: &'a [String],
     ) -> Result<DecisionTree<'a>, TreeError> {
+        if data.is_empty() {
+            return Err(TreeError::EmptyDataset);
+        }
         let vocab = self.vocab.ok_or(TreeError::MissingVocabulary)?;
 
         let mut tree = DecisionTree::train(
