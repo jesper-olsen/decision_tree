@@ -1,10 +1,11 @@
 use clap::Parser;
 use decision_tree::data::{Sample, SampleValue, Vocabulary, load_single_csv, load_train_test_csv};
 use decision_tree::export::export_graph;
-use decision_tree::tree::DecisionTree;
+use decision_tree::tree::{Criterion, DecisionTree};
 use rand::SeedableRng;
 use rand::seq::SliceRandom;
 use rand_chacha::ChaCha8Rng;
+use std::str::FromStr;
 
 #[derive(Parser, Debug)]
 #[command(author, version, about = "Train and evaluate a decision tree on a given dataset", long_about = None)]
@@ -102,7 +103,13 @@ fn calculate_accuracy(model: &DecisionTree, test_data: &[Sample]) -> f64 {
     (correct_predictions as f64 / total_predictions as f64) * 100.0
 }
 
-fn kfold_eval(data: Vec<Sample>, header: Vec<String>, vocab: Vocabulary, args: &Args) {
+fn kfold_eval(
+    data: Vec<Sample>,
+    header: Vec<String>,
+    vocab: Vocabulary,
+    criterion: Criterion,
+    args: &Args,
+) {
     println!("\nPerforming {}-fold cross-validation...", args.k_folds);
     let folds = create_folds(&data, args.k_folds);
     let mut fold_accuracies = Vec::new();
@@ -131,7 +138,7 @@ fn kfold_eval(data: Vec<Sample>, header: Vec<String>, vocab: Vocabulary, args: &
             train_data,
             header.clone(),
             &vocab,
-            &args.criterion,
+            criterion,
             args.max_depth,
             args.min_samples_split,
         );
@@ -139,7 +146,7 @@ fn kfold_eval(data: Vec<Sample>, header: Vec<String>, vocab: Vocabulary, args: &
 
         // Prune if requested
         if args.prune > 0.0 {
-            model.prune(args.prune, &args.criterion, false);
+            model.prune(args.prune, criterion, false);
             println!("Pruned model down to {} nodes", model.size());
         }
 
@@ -176,6 +183,7 @@ fn split_eval(
     data: Vec<Sample>,
     header: Vec<String>,
     vocab: Vocabulary,
+    criterion: Criterion,
     args: &Args,
 ) -> Result<(), Box<dyn std::error::Error>> {
     println!("\nPerforming a simple train/test split...");
@@ -187,15 +195,12 @@ fn split_eval(
     );
     println!("{}", "-".repeat(30));
 
-    println!(
-        "Training the decision tree model (criterion: {})...",
-        args.criterion
-    );
+    println!("Training the decision tree model (criterion: {criterion:?})...",);
     let mut model = DecisionTree::train(
         train_data,
         header,
         &vocab,
-        &args.criterion,
+        criterion,
         args.max_depth,
         args.min_samples_split,
     );
@@ -203,7 +208,7 @@ fn split_eval(
 
     if args.prune > 0.0 {
         println!("Pruning the tree with min_gain = {}...", args.prune);
-        model.prune(args.prune, &args.criterion, true);
+        model.prune(args.prune, criterion, true);
         println!("Pruned down to {} nodes", model.size());
     } else {
         println!("No pruning requested.");
@@ -224,6 +229,7 @@ fn split_eval(
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args = Args::parse();
+    let criterion = Criterion::from_str(&args.criterion)?;
 
     if let Some(test_file) = args.test_file {
         // Case 1: External test file provided
@@ -231,15 +237,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             load_train_test_csv(&args.file_path, &test_file, None, true)?;
 
         // Train
-        println!(
-            "\nTraining decision tree (criterion: {})...",
-            args.criterion
-        );
+        println!("\nTraining decision tree (criterion: {criterion:?})...",);
         let mut model = DecisionTree::train(
             train_data,
             header,
             &vocab,
-            &args.criterion,
+            criterion,
             args.max_depth,
             args.min_samples_split,
         );
@@ -247,7 +250,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         if args.prune > 0.0 {
             println!("Pruning the tree with min_gain = {}...", args.prune);
-            model.prune(args.prune, &args.criterion, true);
+            model.prune(args.prune, criterion, true);
             println!("Pruned model down to {} nodes", model.size());
         }
 
@@ -267,9 +270,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         // Choose evaluation method
         if args.k_folds > 1 {
-            kfold_eval(data, header, vocab, &args);
+            kfold_eval(data, header, vocab, criterion, &args);
         } else {
-            split_eval(data, header, vocab, &args)?;
+            split_eval(data, header, vocab, criterion, &args)?;
         }
     }
 

@@ -2,7 +2,8 @@ use clap::Parser;
 use decision_tree::data::{Sample, SampleValue, Vocabulary, load_single_csv};
 use decision_tree::export::export_graph;
 use decision_tree::node::Counter;
-use decision_tree::tree::DecisionTree;
+use decision_tree::tree::{Criterion, DecisionTree};
+use std::str::FromStr;
 
 pub fn print_classification_result(sample: &Sample, result: &Counter, vocab: &Vocabulary) {
     if result.is_empty() {
@@ -35,7 +36,7 @@ pub fn print_classification_result(sample: &Sample, result: &Counter, vocab: &Vo
 }
 
 pub fn small_example(
-    criterion: &str,
+    criterion: Criterion,
     plot: Option<&str>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let (header, training_data, vocab, _num_classes) = load_single_csv("data/tbc.csv", None, true)?;
@@ -74,7 +75,7 @@ pub fn small_example(
 }
 
 pub fn bigger_example(
-    criterion: &str,
+    criterion: Criterion,
     plot: Option<&str>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let (header, training_data, vocab, _num_classes) =
@@ -133,10 +134,11 @@ struct Args {
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args = Args::parse();
+    let criterion = Criterion::from_str(&args.criterion)?;
 
     match args.example {
-        1 => small_example(&args.criterion, args.plot.as_deref()),
-        2 => bigger_example(&args.criterion, args.plot.as_deref()),
+        1 => small_example(criterion, args.plot.as_deref()),
+        2 => bigger_example(criterion, args.plot.as_deref()),
         _ => {
             println!("Invalid example - should be 1 or 2");
             Ok(())

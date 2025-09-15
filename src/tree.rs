@@ -1,6 +1,28 @@
 use crate::data::{Sample, SampleValue, Vocabulary};
 use crate::node::{Counter, Node, Summary};
 use std::collections::HashMap;
+use std::str::FromStr;
+
+#[derive(Clone, Copy, Debug)]
+pub enum Criterion {
+    Entropy,
+    Gini,
+}
+
+impl FromStr for Criterion {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_lowercase().as_str() {
+            "entropy" => Ok(Criterion::Entropy),
+            "gini" => Ok(Criterion::Gini),
+            _ => Err(format!(
+                "Unknown criterion: '{}'. Valid options: entropy, gini",
+                s
+            )),
+        }
+    }
+}
 
 pub struct DecisionTree<'a> {
     pub root: Node,
@@ -21,11 +43,10 @@ impl<'a> DecisionTree<'a> {
         self.root.size()
     }
 
-    fn eval_fn(criterion: &str) -> Box<dyn Fn(&Counter) -> f64> {
+    fn eval_fn(criterion: Criterion) -> Box<dyn Fn(&Counter) -> f64> {
         match criterion {
-            "entropy" => Box::new(entropy),
-            "gini" => Box::new(gini),
-            _ => panic!("Unknown criterion: {criterion}"),
+            Criterion::Entropy => Box::new(entropy),
+            Criterion::Gini => Box::new(gini),
         }
     }
 
@@ -33,7 +54,7 @@ impl<'a> DecisionTree<'a> {
         data: Vec<Sample>,
         header: Vec<String>,
         vocab: &'a Vocabulary,
-        criterion: &str,
+        criterion: Criterion,
         max_depth: Option<usize>,
         min_samples_split: usize,
     ) -> Self {
@@ -169,7 +190,7 @@ impl<'a> DecisionTree<'a> {
         }
     }
 
-    pub fn prune(&mut self, min_gain: f64, criterion: &str, notify: bool) {
+    pub fn prune(&mut self, min_gain: f64, criterion: Criterion, notify: bool) {
         let eval_fn = Self::eval_fn(criterion);
         self.root.prune(min_gain, eval_fn.as_ref(), notify);
     }
