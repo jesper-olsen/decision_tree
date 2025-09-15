@@ -198,7 +198,7 @@ impl Node {
                 }
                 let merged_impurity = criterion(&merged_counts);
                 let child_impurity =
-                    p_true * criterion(&true_counts) + (1.0 - p_true) * criterion(&false_counts);
+                    p_true * criterion(true_counts) + (1.0 - p_true) * criterion(false_counts);
                 let gain = merged_impurity - child_impurity;
 
                 if gain < min_gain {

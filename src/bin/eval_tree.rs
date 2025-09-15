@@ -1,7 +1,7 @@
 use clap::Parser;
 use decision_tree::data::{Sample, SampleValue, Vocabulary, load_single_csv, load_train_test_csv};
 use decision_tree::export::export_graph;
-use decision_tree::tree::{Criterion, DecisionTree};
+use decision_tree::tree::{Criterion, DecisionTree, DecisionTreeBuilder};
 use rand::SeedableRng;
 use rand::seq::SliceRandom;
 use rand_chacha::ChaCha8Rng;
@@ -109,7 +109,7 @@ fn kfold_eval(
     vocab: Vocabulary,
     criterion: Criterion,
     args: &Args,
-) {
+) -> Result<(), Box<dyn std::error::Error>> {
     println!("\nPerforming {}-fold cross-validation...", args.k_folds);
     let folds = create_folds(&data, args.k_folds);
     let mut fold_accuracies = Vec::new();
@@ -134,26 +134,19 @@ fn kfold_eval(
         );
 
         // Train the model for this fold
-        let mut model = DecisionTree::train(
-            train_data,
-            header.clone(),
-            &vocab,
-            criterion,
-            args.max_depth,
-            args.min_samples_split,
-        );
-        println!("Trained a model with {} nodes", model.size());
-
-        // Prune if requested
-        if args.prune > 0.0 {
-            model.prune(args.prune, criterion, false);
-            println!("Pruned model down to {} nodes", model.size());
-        }
+        let model = DecisionTreeBuilder::new()
+            .verbose(1)
+            .vocabulary(&vocab)
+            .criterion(criterion)
+            .max_depth(args.max_depth)
+            .min_samples_split(args.min_samples_split)
+            .min_gain_prune(args.prune)
+            .build(train_data, &header)?;
 
         // Evaluate and store accuracy
         let accuracy = calculate_accuracy(&model, test_data);
         fold_accuracies.push(accuracy);
-        println!("Fold {} Accuracy: {:.2}%", i + 1, accuracy);
+        println!("Fold {} Accuracy: {accuracy:.2}%", i + 1);
     }
 
     // Calculate statistics
@@ -177,6 +170,7 @@ fn kfold_eval(
     println!("Average Accuracy: {avg_accuracy:.2}%");
     println!("Standard Deviation: {std_dev:.2}%");
     println!("{}", "=".repeat(30));
+    Ok(())
 }
 
 fn split_eval(
@@ -196,23 +190,14 @@ fn split_eval(
     println!("{}", "-".repeat(30));
 
     println!("Training the decision tree model (criterion: {criterion:?})...",);
-    let mut model = DecisionTree::train(
-        train_data,
-        header,
-        &vocab,
-        criterion,
-        args.max_depth,
-        args.min_samples_split,
-    );
-    println!("Trained a model with {} nodes", model.size());
-
-    if args.prune > 0.0 {
-        println!("Pruning the tree with min_gain = {}...", args.prune);
-        model.prune(args.prune, criterion, true);
-        println!("Pruned down to {} nodes", model.size());
-    } else {
-        println!("No pruning requested.");
-    }
+    let model = DecisionTreeBuilder::new()
+        .verbose(1)
+        .vocabulary(&vocab)
+        .criterion(criterion)
+        .max_depth(args.max_depth)
+        .min_samples_split(args.min_samples_split)
+        .min_gain_prune(args.prune)
+        .build(train_data, &header)?;
 
     if let Some(ref plot_file) = args.plot {
         export_graph(&model, plot_file)?;
@@ -240,7 +225,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         println!("\nTraining decision tree (criterion: {criterion:?})...",);
         let mut model = DecisionTree::train(
             train_data,
-            header,
+            &header,
             &vocab,
             criterion,
             args.max_depth,
@@ -270,7 +255,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         // Choose evaluation method
         if args.k_folds > 1 {
-            kfold_eval(data, header, vocab, criterion, &args);
+            kfold_eval(data, header, vocab, criterion, &args)?;
         } else {
             split_eval(data, header, vocab, criterion, &args)?;
         }

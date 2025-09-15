@@ -27,7 +27,7 @@ pub fn export_graph(tree: &DecisionTree, filename: &str) -> io::Result<()> {
         .to_str()
         .unwrap();
     let status = Command::new("dot")
-        .arg(format!("-T{}", ext))
+        .arg(format!("-T{ext}"))
         .arg("-o")
         .arg(output_path)
         .arg(&dot_filename)
@@ -56,7 +56,7 @@ fn generate_dot(tree: &DecisionTree) -> String {
     let mut node_counter = 0;
     export_node_recursive(
         &tree.root,
-        &tree.header,
+        tree.header,
         tree.vocab,
         &mut dot_content,
         &mut node_counter,
@@ -90,7 +90,7 @@ fn export_node_recursive(
                 .iter()
                 .map(|(k, v)| {
                     let class_name = vocab.get_str(**k).unwrap_or("?");
-                    format!(r#"<TR><TD ALIGN="LEFT">{}: {}</TD></TR>"#, class_name, v)
+                    format!(r#"<TR><TD ALIGN="LEFT">{class_name}: {v}</TD></TR>"#)
                 })
                 .collect::<String>();
 
@@ -117,11 +117,11 @@ fn export_node_recursive(
         } => {
             let column_name = &header[*col];
             let condition = match value {
-                SampleValue::Numeric(n) => format!("{} &ge; {:.2}", column_name, n),
+                SampleValue::Numeric(n) => format!("{column_name} &ge; {n:.2}"),
                 SampleValue::String(id) => {
                     format!("{} == {}", column_name, vocab.get_str(*id).unwrap_or("?"))
                 }
-                SampleValue::None => format!("{} == None", column_name),
+                SampleValue::None => format!("{column_name} == None"),
             };
 
             // Also use a table here for alignment
@@ -144,12 +144,10 @@ fn export_node_recursive(
                 export_node_recursive(false_branch, header, vocab, dot_content, counter);
 
             dot_content.push_str(&format!(
-                "    {} -> {} [label=\"True\"];\n",
-                node_id, true_child_id
+                "    {node_id} -> {true_child_id} [label=\"True\"];\n",
             ));
             dot_content.push_str(&format!(
-                "    {} -> {} [label=\"False\"];\n",
-                node_id, false_child_id
+                "    {node_id} -> {false_child_id} [label=\"False\"];\n",
             ));
 
             (label_html, "#399de5aa")
@@ -157,8 +155,7 @@ fn export_node_recursive(
     };
 
     dot_content.push_str(&format!(
-        "    {} [label={}, fillcolor=\"{}\"];\n",
-        node_id, label, fillcolor
+        "    {node_id} [label={label}, fillcolor=\"{fillcolor}\"];\n",
     ));
 
     node_id

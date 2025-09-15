@@ -200,10 +200,8 @@ fn read_csv(
 
         if values.len() != expected_columns {
             return Err(format!(
-                "Line {} has {} columns, expected {}",
-                line_number,
+                "Line {line_number} has {} columns, expected {expected_columns}",
                 values.len(),
-                expected_columns
             )
             .into());
         }
@@ -222,7 +220,7 @@ fn read_csv(
                         return SampleValue::String(id);
                     } else {
                         // This shouldn't happen if scan_csv was run first
-                        panic!("Unknown target label '{}' - was scan_csv run?", s);
+                        panic!("Unknown target label '{s}' - was scan_csv run?");
                     }
                 }
 
@@ -283,9 +281,7 @@ pub fn load_train_test_csv(
     // Validate headers match
     if train_header != test_header {
         return Err(format!(
-            "Train and test files have different headers:\nTrain: {:?}\nTest: {:?}",
-            train_header, test_header
-        )
+            "Train and test files have different headers:\nTrain: {train_header:?}\nTest: {test_header:?}")
         .into());
     }
 

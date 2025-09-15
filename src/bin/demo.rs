@@ -2,7 +2,7 @@ use clap::Parser;
 use decision_tree::data::{Sample, SampleValue, Vocabulary, load_single_csv};
 use decision_tree::export::export_graph;
 use decision_tree::node::Counter;
-use decision_tree::tree::{Criterion, DecisionTree};
+use decision_tree::tree::{Criterion, DecisionTreeBuilder};
 use std::str::FromStr;
 
 pub fn print_classification_result(sample: &Sample, result: &Counter, vocab: &Vocabulary) {
@@ -40,7 +40,13 @@ pub fn small_example(
     plot: Option<&str>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let (header, training_data, vocab, _num_classes) = load_single_csv("data/tbc.csv", None, true)?;
-    let dt = DecisionTree::train(training_data, header, &vocab, criterion, None, 2);
+
+    let dt = DecisionTreeBuilder::new()
+        .vocabulary(&vocab)
+        .criterion(criterion)
+        .min_samples_split(2)
+        .build(training_data, &header)?;
+
     println!("{dt}");
 
     println!("\n--- Classification Examples ---");
@@ -80,7 +86,13 @@ pub fn bigger_example(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let (header, training_data, vocab, _num_classes) =
         load_single_csv("data/iris.csv", None, true)?;
-    let mut dt = DecisionTree::train(training_data, header, &vocab, criterion, None, 2);
+
+    let mut dt = DecisionTreeBuilder::new()
+        .vocabulary(&vocab)
+        .criterion(criterion)
+        .min_samples_split(2)
+        .build(training_data, &header)?;
+
     println!("{dt}");
 
     // Prune the tree

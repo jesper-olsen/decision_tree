@@ -1,4 +1,5 @@
 use crate::data::{Sample, SampleValue, Vocabulary};
+use crate::error::TreeError;
 use crate::node::{Counter, Node, Summary};
 use std::collections::HashMap;
 use std::str::FromStr;
@@ -17,8 +18,7 @@ impl FromStr for Criterion {
             "entropy" => Ok(Criterion::Entropy),
             "gini" => Ok(Criterion::Gini),
             _ => Err(format!(
-                "Unknown criterion: '{}'. Valid options: entropy, gini",
-                s
+                "Unknown criterion: '{s}'. Valid options: entropy, gini"
             )),
         }
     }
@@ -26,12 +26,12 @@ impl FromStr for Criterion {
 
 pub struct DecisionTree<'a> {
     pub root: Node,
-    pub header: Vec<String>,
-    pub vocab: &'a Vocabulary, // TODO: owned?
+    pub header: &'a [String],
+    pub vocab: &'a Vocabulary,
 }
 
 impl<'a> DecisionTree<'a> {
-    pub fn new(root: Node, header: Vec<String>, vocab: &'a Vocabulary) -> Self {
+    pub fn new(root: Node, header: &'a [String], vocab: &'a Vocabulary) -> Self {
         DecisionTree {
             root,
             header,
@@ -52,7 +52,7 @@ impl<'a> DecisionTree<'a> {
 
     pub fn train(
         data: Vec<Sample>,
-        header: Vec<String>,
+        header: &'a [String],
         vocab: &'a Vocabulary,
         criterion: Criterion,
         max_depth: Option<usize>,
@@ -201,7 +201,7 @@ impl<'a> std::fmt::Display for DecisionTree<'a> {
         write!(
             f,
             "{}",
-            self.root.to_string(Some(&self.header), "", self.vocab)
+            self.root.to_string(Some(self.header), "", self.vocab)
         )
     }
 }
@@ -281,4 +281,92 @@ fn gini(counts: &Counter) -> f64 {
             p * p
         })
         .sum::<f64>()
+}
+
+pub struct DecisionTreeBuilder<'a> {
+    verbose: u8,
+    criterion: Criterion,
+    max_depth: Option<usize>,
+    min_samples_split: usize,
+    min_gain_prune: Option<f64>,
+    vocab: Option<&'a Vocabulary>,
+}
+
+impl<'a> Default for DecisionTreeBuilder<'a> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl<'a> DecisionTreeBuilder<'a> {
+    pub fn new() -> Self {
+        // Sensible defaults
+        Self {
+            verbose: 0,
+            criterion: Criterion::Gini,
+            max_depth: None,
+            min_samples_split: 2,
+            min_gain_prune: None,
+            vocab: None,
+        }
+    }
+
+    pub fn criterion(mut self, criterion: Criterion) -> Self {
+        self.criterion = criterion;
+        self
+    }
+
+    pub fn verbose(mut self, verbose: u8) -> Self {
+        self.verbose = verbose;
+        self
+    }
+
+    pub fn max_depth(mut self, max_depth: Option<usize>) -> Self {
+        self.max_depth = max_depth;
+        self
+    }
+
+    pub fn min_samples_split(mut self, samples: usize) -> Self {
+        self.min_samples_split = samples;
+        self
+    }
+
+    pub fn min_gain_prune(mut self, min_gain: f64) -> Self {
+        self.min_gain_prune = Some(min_gain);
+        self
+    }
+
+    pub fn vocabulary(mut self, vocab: &'a Vocabulary) -> Self {
+        self.vocab = Some(vocab);
+        self
+    }
+
+    pub fn build(
+        self,
+        data: Vec<Sample>,
+        header: &'a [String],
+    ) -> Result<DecisionTree<'a>, TreeError> {
+        let vocab = self.vocab.ok_or(TreeError::MissingVocabulary)?;
+
+        let mut tree = DecisionTree::train(
+            data,
+            header,
+            vocab,
+            self.criterion,
+            self.max_depth,
+            self.min_samples_split,
+        );
+        if self.verbose > 0 {
+            println!("Trained a model with {} nodes", tree.size());
+        }
+
+        // Apply post-pruning if specified
+        if let Some(min_gain) = self.min_gain_prune {
+            tree.prune(min_gain, self.criterion, self.verbose > 1);
+            if self.verbose > 0 {
+                println!("Pruned model down to {} nodes", tree.size());
+            }
+        }
+        Ok(tree)
+    }
 }
