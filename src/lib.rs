@@ -271,7 +271,7 @@ impl Node {
 pub struct DecisionTree<'a> {
     pub root: Node,
     pub header: Vec<String>,
-    pub vocab: &'a Vocabulary,
+    pub vocab: &'a Vocabulary,  // TODO: owned?
 }
 
 impl<'a> DecisionTree<'a> {
@@ -344,6 +344,7 @@ impl<'a> DecisionTree<'a> {
             return Node::leaf(current_counts, summary);
         }
 
+        // find best gain
         let mut best_gain = 0.0;
         let mut best_rule: Option<(usize, SampleValue)> = None;
         let mut best_sets: Option<(Vec<usize>, Vec<usize>)> = None;
@@ -357,7 +358,7 @@ impl<'a> DecisionTree<'a> {
 
             for value in column_values {
                 if matches!(value, SampleValue::None) {
-                    continue;
+                    continue;  // don't split on a missing value 
                 }
 
                 let (set1_indices, set2_indices) = split_set(all_data, row_indices, col, &value);
@@ -466,6 +467,7 @@ fn split_set(
         let v = &row[column];
 
         if matches!(v, SampleValue::None) {
+            // missing value - add row to both sets
             set1_indices.push(row_idx);
             set2_indices.push(row_idx);
         } else if matches!(value, SampleValue::Numeric(_)) {
