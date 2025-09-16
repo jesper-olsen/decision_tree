@@ -45,7 +45,11 @@ pub fn small_example(
         .vocabulary(&dataset.vocabulary)
         .criterion(criterion)
         .min_samples_split(2)
-        .build(dataset.data, &dataset.metadata.header)?;
+        .build(
+            dataset.data,
+            &dataset.metadata.column_types,
+            &dataset.metadata.header,
+        )?;
 
     println!("{dt}");
 
@@ -90,7 +94,11 @@ pub fn bigger_example(
         .vocabulary(&dataset.vocabulary)
         .criterion(criterion)
         .min_samples_split(2)
-        .build(dataset.data, &dataset.metadata.header)?;
+        .build(
+            dataset.data,
+            &dataset.metadata.column_types,
+            &dataset.metadata.header,
+        )?;
 
     println!("{dt}");
 

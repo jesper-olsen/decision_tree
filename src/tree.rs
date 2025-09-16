@@ -1,4 +1,4 @@
-use crate::data::{Sample, SampleValue, Vocabulary};
+use crate::data::{ColumnType, Sample, SampleValue, Vocabulary};
 use crate::error::TreeError;
 use crate::node::{Counter, Node, Summary};
 use std::collections::HashMap;
@@ -52,6 +52,7 @@ impl<'a> DecisionTree<'a> {
 
     pub fn train(
         data: Vec<Sample>,
+        column_types: &[ColumnType],
         header: &'a [String],
         vocab: &'a Vocabulary,
         criterion: Criterion,
@@ -62,6 +63,7 @@ impl<'a> DecisionTree<'a> {
         let row_indices: Vec<usize> = (0..data.len()).collect();
         let root = Self::grow_tree(
             &data,
+            column_types,
             &row_indices,
             min_samples_split,
             max_depth,
@@ -71,22 +73,27 @@ impl<'a> DecisionTree<'a> {
         DecisionTree::new(root, header, vocab)
     }
 
-    // Add this helper function
+    // specialisation of find_best_split - avoids 'redundant' splits  
     fn find_best_numeric_split(
+        current_score: f64,
         all_data: &[Sample],
         row_indices: &[usize],
         col: usize,
-        current_score: f64,
         criterion: &dyn Fn(&Counter) -> f64,
     ) -> Option<(f64, SampleValue, Vec<usize>, Vec<usize>)> {
-        // Extract (value, class_label, row_idx) tuples
-        let mut value_label_idx: Vec<(f64, usize, usize)> = Vec::with_capacity(row_indices.len());
+        // Collect non-missing numeric values with their class labels and row indices
+        let mut value_label_idx: Vec<(f64, usize, usize)> = Vec::new();
+        let mut missing_indices: Vec<usize> = Vec::new();
 
         for &row_idx in row_indices {
-            if let (SampleValue::Numeric(val), Some(SampleValue::String(label))) =
-                (&all_data[row_idx][col], all_data[row_idx].last())
-            {
-                value_label_idx.push((*val, *label, row_idx));
+            match (&all_data[row_idx][col], all_data[row_idx].last()) {
+                (SampleValue::Numeric(val), Some(SampleValue::String(label))) => {
+                    value_label_idx.push((*val, *label, row_idx));
+                }
+                (SampleValue::None, _) => {
+                    missing_indices.push(row_idx);
+                }
+                _ => {} // Skip non-numeric or rows without proper labels
             }
         }
 
@@ -94,65 +101,91 @@ impl<'a> DecisionTree<'a> {
             return None;
         }
 
-        // Sort by value
-        value_label_idx.sort_unstable_by(|a, b| a.0.partial_cmp(&b.0).unwrap());
+        // Sort by numeric value ascending
+        value_label_idx
+            .sort_unstable_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal));
 
-        // Initialize class counts
+        // Initialize class counts for the single-pass algorithm
         let mut left_counts: Counter = HashMap::new();
         let mut right_counts: Counter = HashMap::new();
 
-        // Start with all samples in the right partition
+        // Start with all non-missing samples in the right partition
         for &(_, label, _) in &value_label_idx {
             *right_counts.entry(label).or_insert(0) += 1;
         }
 
         let mut best_gain = 0.0;
         let mut best_split_value = 0.0;
-        let mut best_split_idx = 0;
 
         // Single pass through sorted data
-        for i in 0..value_label_idx.len() - 1 {
+        for i in 0..(value_label_idx.len() - 1) {
             let (val, label, _) = value_label_idx[i];
+            let (next_val, _, _) = value_label_idx[i + 1];
 
-            // Move sample from right to left
+            // Move current sample from right to left
             *left_counts.entry(label).or_insert(0) += 1;
-            let right_count = right_counts.get_mut(&label).unwrap();
-            *right_count -= 1;
-            if *right_count == 0 {
-                right_counts.remove(&label);
+            if let Some(right_count) = right_counts.get_mut(&label) {
+                *right_count -= 1;
+                if *right_count == 0 {
+                    right_counts.remove(&label);
+                }
             }
 
-            // Only consider split if next value is different
-            if val < value_label_idx[i + 1].0 {
-                let left_size = i + 1;
-                let right_size = value_label_idx.len() - left_size;
-                let total_size = value_label_idx.len();
+            // Only consider a split point between two different consecutive values.
+            if val < next_val {
+                let midpoint = (val + next_val) / 2.0;
 
-                let p_left = left_size as f64 / total_size as f64;
-                let p_right = right_size as f64 / total_size as f64;
+                let gain = if missing_indices.is_empty() {
+                    let left_size = i + 1;
+                    let total_non_missing = value_label_idx.len();
+                    let p = left_size as f64 / total_non_missing as f64;
 
-                let gain = current_score
-                    - p_left * criterion(&left_counts)
-                    - p_right * criterion(&right_counts);
+                    // Ensure partitions are not empty
+                    if left_counts.is_empty() || right_counts.is_empty() {
+                        0.0
+                    } else {
+                        current_score
+                            - p * criterion(&left_counts)
+                            - (1.0 - p) * criterion(&right_counts)
+                    }
+                } else {
+                    // If missing values exist, we must use the slower but correct method
+                    // of splitting the full set to account for missing values being
+                    // sent to both children.
+                    let (set1, set2) =
+                        split_set(all_data, row_indices, col, &SampleValue::Numeric(midpoint));
+                    if set1.is_empty() || set2.is_empty() {
+                        0.0
+                    } else {
+                        let p_actual = set1.len() as f64 / row_indices.len() as f64;
+                        current_score
+                            - p_actual * criterion(&count_classes(all_data, &set1))
+                            - (1.0 - p_actual) * criterion(&count_classes(all_data, &set2))
+                    }
+                };
 
                 if gain > best_gain {
                     best_gain = gain;
-                    best_split_value = (val + value_label_idx[i + 1].0) / 2.0;
-                    best_split_idx = i + 1;
+                    best_split_value = midpoint;
                 }
             }
         }
 
         if best_gain > 0.0 {
-            // Reconstruct the index sets
-            let set1: Vec<usize> = value_label_idx[..best_split_idx]
-                .iter()
-                .map(|t| t.2)
-                .collect();
-            let set2: Vec<usize> = value_label_idx[best_split_idx..]
-                .iter()
-                .map(|t| t.2)
-                .collect();
+            let mut set1: Vec<usize> = Vec::new(); // true branch: values >= midpoint
+            let mut set2: Vec<usize> = Vec::new(); // false branch: values < midpoint
+
+            for &(val, _label, row_idx) in &value_label_idx {
+                if val >= best_split_value {
+                    set1.push(row_idx);
+                } else {
+                    set2.push(row_idx);
+                }
+            }
+
+            // Add missing indices to both sets
+            set1.extend_from_slice(&missing_indices);
+            set2.extend_from_slice(&missing_indices);
 
             Some((
                 best_gain,
@@ -165,8 +198,52 @@ impl<'a> DecisionTree<'a> {
         }
     }
 
+    fn find_best_split(
+        current_score: f64,
+        all_data: &[Sample],
+        row_indices: &[usize],
+        col: usize,
+        criterion: &dyn Fn(&Counter) -> f64,
+    ) -> Option<(f64, SampleValue, Vec<usize>, Vec<usize>)> {
+        let mut best_gain = 0.0;
+        let mut best: Option<(SampleValue, Vec<usize>, Vec<usize>)> = None;
+
+        let mut column_values = std::collections::HashSet::new();
+        for &row_idx in row_indices {
+            column_values.insert(all_data[row_idx][col].clone());
+        }
+
+        for value in column_values {
+            if matches!(value, SampleValue::None) {
+                continue; // don't split on a missing value 
+            }
+
+            let (set1_indices, set2_indices) = split_set(all_data, row_indices, col, &value);
+
+            if set1_indices.is_empty() || set2_indices.is_empty() {
+                continue;
+            }
+            let p = set1_indices.len() as f64 / row_indices.len() as f64;
+
+            let gain = current_score
+                - p * criterion(&count_classes(all_data, &set1_indices))
+                - (1.0 - p) * criterion(&count_classes(all_data, &set2_indices));
+
+            if gain > best_gain {
+                best_gain = gain;
+                best = Some((value, set1_indices, set2_indices));
+            }
+        }
+        if let Some((value, set1, set2)) = best {
+            Some((best_gain, value, set1, set2))
+        } else {
+            None
+        }
+    }
+
     fn grow_tree(
         all_data: &[Sample],
+        column_types: &[ColumnType],
         row_indices: &[usize],
         min_samples_split: usize,
         max_depth: Option<usize>,
@@ -199,33 +276,25 @@ impl<'a> DecisionTree<'a> {
 
         let column_count = all_data[0].len() - 1;
         for col in 0..column_count {
-            let mut column_values = std::collections::HashSet::new();
-            for &row_idx in row_indices {
-                column_values.insert(all_data[row_idx][col].clone());
-            }
-
-            for value in column_values {
-                if matches!(value, SampleValue::None) {
-                    continue; // don't split on a missing value 
+            let split = match column_types[col] {
+                ColumnType::Numeric => Self::find_best_numeric_split(
+                    current_score,
+                    all_data,
+                    row_indices,
+                    col,
+                    criterion,
+                ),
+                ColumnType::Categorical => {
+                    Self::find_best_split(current_score, all_data, row_indices, col, criterion)
                 }
-
-                let (set1_indices, set2_indices) = split_set(all_data, row_indices, col, &value);
-
-                if set1_indices.is_empty() || set2_indices.is_empty() {
-                    continue;
-                }
-
-                let p = set1_indices.len() as f64 / row_indices.len() as f64;
-
-                let gain = current_score
-                    - p * criterion(&count_classes(all_data, &set1_indices))
-                    - (1.0 - p) * criterion(&count_classes(all_data, &set2_indices));
-
-                if gain > best_gain {
-                    best_gain = gain;
-                    best_rule = Some((col, value));
-                    best_sets = Some((set1_indices, set2_indices));
-                }
+                ColumnType::Mixed => panic!("not supposed to mix."),
+            };
+            if let Some((gain, value, set1, set2)) = split
+                && gain > best_gain
+            {
+                best_gain = gain;
+                best_rule = Some((col, value));
+                best_sets = Some((set1, set2));
             }
         }
 
@@ -239,6 +308,7 @@ impl<'a> DecisionTree<'a> {
 
             let true_branch = Box::new(Self::grow_tree(
                 all_data,
+                column_types,
                 &set1_indices,
                 min_samples_split,
                 max_depth,
@@ -248,6 +318,7 @@ impl<'a> DecisionTree<'a> {
 
             let false_branch = Box::new(Self::grow_tree(
                 all_data,
+                column_types,
                 &set2_indices,
                 min_samples_split,
                 max_depth,
@@ -442,6 +513,7 @@ impl<'a> DecisionTreeBuilder<'a> {
     pub fn build(
         self,
         data: Vec<Sample>,
+        column_types: &[ColumnType],
         header: &'a [String],
     ) -> Result<DecisionTree<'a>, TreeError> {
         if data.is_empty() {
@@ -451,6 +523,7 @@ impl<'a> DecisionTreeBuilder<'a> {
 
         let mut tree = DecisionTree::train(
             data,
+            column_types,
             header,
             vocab,
             self.criterion,

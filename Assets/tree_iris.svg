@@ -40,7 +40,7 @@
 <g id="node4" class="node">
 <title>node4</title>
 <path fill="#399de5" fill-opacity="0.666667" stroke="black" d="M256,-375C256,-375 148.25,-375 148.25,-375 142.25,-375 136.25,-369 136.25,-363 136.25,-363 136.25,-317.5 136.25,-317.5 136.25,-311.5 142.25,-305.5 148.25,-305.5 148.25,-305.5 256,-305.5 256,-305.5 262,-305.5 268,-311.5 268,-317.5 268,-317.5 268,-363 268,-363 268,-369 262,-375 256,-375"/>
-<text xml:space="preserve" text-anchor="start" x="146.25" y="-356.7" font-family="Times,serif" font-weight="bold" font-size="14.00">SepalLength ≥ 6.00</text>
+<text xml:space="preserve" text-anchor="start" x="146.25" y="-356.7" font-family="Times,serif" font-weight="bold" font-size="14.00">SepalLength ≥ 5.95</text>
 <text xml:space="preserve" text-anchor="start" x="146.25" y="-335.2" font-family="Times,serif" font-size="14.00">impurity = 0.918</text>
 <text xml:space="preserve" text-anchor="start" x="146.25" y="-314.7" font-family="Times,serif" font-size="14.00">samples = 3</text>
 </g>
@@ -62,7 +62,7 @@
 <g id="node5" class="node">
 <title>node2</title>
 <path fill="#399de5" fill-opacity="0.666667" stroke="black" d="M253.88,-517.5C253.88,-517.5 148.38,-517.5 148.38,-517.5 142.38,-517.5 136.38,-511.5 136.38,-505.5 136.38,-505.5 136.38,-460 136.38,-460 136.38,-454 142.38,-448 148.38,-448 148.38,-448 253.88,-448 253.88,-448 259.88,-448 265.88,-454 265.88,-460 265.88,-460 265.88,-505.5 265.88,-505.5 265.88,-511.5 259.88,-517.5 253.88,-517.5"/>
-<text xml:space="preserve" text-anchor="start" x="146.38" y="-499.2" font-family="Times,serif" font-weight="bold" font-size="14.00">PetalLength ≥ 4.90</text>
+<text xml:space="preserve" text-anchor="start" x="146.38" y="-499.2" font-family="Times,serif" font-weight="bold" font-size="14.00">PetalLength ≥ 4.85</text>
 <text xml:space="preserve" text-anchor="start" x="146.38" y="-477.7" font-family="Times,serif" font-size="14.00">impurity = 0.151</text>
 <text xml:space="preserve" text-anchor="start" x="146.38" y="-457.2" font-family="Times,serif" font-size="14.00">samples = 46</text>
 </g>
@@ -102,7 +102,7 @@
 <g id="node8" class="node">
 <title>node9</title>
 <path fill="#399de5" fill-opacity="0.666667" stroke="black" d="M401,-222.25C401,-222.25 293.25,-222.25 293.25,-222.25 287.25,-222.25 281.25,-216.25 281.25,-210.25 281.25,-210.25 281.25,-164.75 281.25,-164.75 281.25,-158.75 287.25,-152.75 293.25,-152.75 293.25,-152.75 401,-152.75 401,-152.75 407,-152.75 413,-158.75 413,-164.75 413,-164.75 413,-210.25 413,-210.25 413,-216.25 407,-222.25 401,-222.25"/>
-<text xml:space="preserve" text-anchor="start" x="291.25" y="-203.95" font-family="Times,serif" font-weight="bold" font-size="14.00">SepalLength ≥ 7.20</text>
+<text xml:space="preserve" text-anchor="start" x="291.25" y="-203.95" font-family="Times,serif" font-weight="bold" font-size="14.00">SepalLength ≥ 6.95</text>
 <text xml:space="preserve" text-anchor="start" x="291.25" y="-182.45" font-family="Times,serif" font-size="14.00">impurity = 0.918</text>
 <text xml:space="preserve" text-anchor="start" x="291.25" y="-161.95" font-family="Times,serif" font-size="14.00">samples = 3</text>
 </g>
@@ -133,7 +133,7 @@
 <g id="node10" class="node">
 <title>node8</title>
 <path fill="#399de5" fill-opacity="0.666667" stroke="black" d="M399.62,-375C399.62,-375 298.62,-375 298.62,-375 292.62,-375 286.62,-369 286.62,-363 286.62,-363 286.62,-317.5 286.62,-317.5 286.62,-311.5 292.62,-305.5 298.62,-305.5 298.62,-305.5 399.62,-305.5 399.62,-305.5 405.62,-305.5 411.62,-311.5 411.62,-317.5 411.62,-317.5 411.62,-363 411.62,-363 411.62,-369 405.62,-375 399.62,-375"/>
-<text xml:space="preserve" text-anchor="start" x="296.62" y="-356.7" font-family="Times,serif" font-weight="bold" font-size="14.00">PetalWidth ≥ 1.60</text>
+<text xml:space="preserve" text-anchor="start" x="296.62" y="-356.7" font-family="Times,serif" font-weight="bold" font-size="14.00">PetalWidth ≥ 1.55</text>
 <text xml:space="preserve" text-anchor="start" x="296.62" y="-335.2" font-family="Times,serif" font-size="14.00">impurity = 0.918</text>
 <text xml:space="preserve" text-anchor="start" x="296.62" y="-314.7" font-family="Times,serif" font-size="14.00">samples = 6</text>
 </g>
@@ -165,7 +165,7 @@
 <g id="node12" class="node">
 <title>node7</title>
 <path fill="#399de5" fill-opacity="0.666667" stroke="black" d="M401.88,-517.5C401.88,-517.5 296.38,-517.5 296.38,-517.5 290.38,-517.5 284.38,-511.5 284.38,-505.5 284.38,-505.5 284.38,-460 284.38,-460 284.38,-454 290.38,-448 296.38,-448 296.38,-448 401.88,-448 401.88,-448 407.88,-448 413.88,-454 413.88,-460 413.88,-460 413.88,-505.5 413.88,-505.5 413.88,-511.5 407.88,-517.5 401.88,-517.5"/>
-<text xml:space="preserve" text-anchor="start" x="294.38" y="-499.2" font-family="Times,serif" font-weight="bold" font-size="14.00">PetalLength ≥ 5.00</text>
+<text xml:space="preserve" text-anchor="start" x="294.38" y="-499.2" font-family="Times,serif" font-weight="bold" font-size="14.00">PetalLength ≥ 4.95</text>
 <text xml:space="preserve" text-anchor="start" x="294.38" y="-477.7" font-family="Times,serif" font-size="14.00">impurity = 0.445</text>
 <text xml:space="preserve" text-anchor="start" x="294.38" y="-457.2" font-family="Times,serif" font-size="14.00">samples = 54</text>
 </g>
@@ -187,7 +187,7 @@
 <g id="node13" class="node">
 <title>node1</title>
 <path fill="#399de5" fill-opacity="0.666667" stroke="black" d="M324.62,-649.75C324.62,-649.75 223.62,-649.75 223.62,-649.75 217.62,-649.75 211.62,-643.75 211.62,-637.75 211.62,-637.75 211.62,-592.25 211.62,-592.25 211.62,-586.25 217.62,-580.25 223.62,-580.25 223.62,-580.25 324.62,-580.25 324.62,-580.25 330.62,-580.25 336.62,-586.25 336.62,-592.25 336.62,-592.25 336.62,-637.75 336.62,-637.75 336.62,-643.75 330.62,-649.75 324.62,-649.75"/>
-<text xml:space="preserve" text-anchor="start" x="221.62" y="-631.45" font-family="Times,serif" font-weight="bold" font-size="14.00">PetalWidth ≥ 1.80</text>
+<text xml:space="preserve" text-anchor="start" x="221.62" y="-631.45" font-family="Times,serif" font-weight="bold" font-size="14.00">PetalWidth ≥ 1.75</text>
 <text xml:space="preserve" text-anchor="start" x="221.62" y="-609.95" font-family="Times,serif" font-size="14.00">impurity = 1.000</text>
 <text xml:space="preserve" text-anchor="start" x="221.62" y="-589.45" font-family="Times,serif" font-size="14.00">samples = 100</text>
 </g>
@@ -218,7 +218,7 @@
 <g id="node15" class="node">
 <title>node0</title>
 <path fill="#399de5" fill-opacity="0.666667" stroke="black" d="M396.88,-782C396.88,-782 291.38,-782 291.38,-782 285.38,-782 279.38,-776 279.38,-770 279.38,-770 279.38,-724.5 279.38,-724.5 279.38,-718.5 285.38,-712.5 291.38,-712.5 291.38,-712.5 396.88,-712.5 396.88,-712.5 402.88,-712.5 408.88,-718.5 408.88,-724.5 408.88,-724.5 408.88,-770 408.88,-770 408.88,-776 402.88,-782 396.88,-782"/>
-<text xml:space="preserve" text-anchor="start" x="289.38" y="-763.7" font-family="Times,serif" font-weight="bold" font-size="14.00">PetalLength ≥ 3.00</text>
+<text xml:space="preserve" text-anchor="start" x="289.38" y="-763.7" font-family="Times,serif" font-weight="bold" font-size="14.00">PetalLength ≥ 2.45</text>
 <text xml:space="preserve" text-anchor="start" x="289.38" y="-742.2" font-family="Times,serif" font-size="14.00">impurity = 1.585</text>
 <text xml:space="preserve" text-anchor="start" x="289.38" y="-721.7" font-family="Times,serif" font-size="14.00">samples = 150</text>
 </g>

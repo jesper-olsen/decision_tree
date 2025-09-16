@@ -1,7 +1,6 @@
 use clap::Parser;
 use decision_tree::data::{
-    LoadedDataset, LoadedSplitDataset, Sample, SampleValue, Vocabulary, load_single_csv,
-    load_train_test_csv,
+    LoadedDataset, LoadedSplitDataset, Sample, SampleValue, load_single_csv, load_train_test_csv,
 };
 use decision_tree::export::export_graph;
 use decision_tree::tree::{Criterion, DecisionTree, DecisionTreeBuilder};
@@ -142,7 +141,11 @@ fn kfold_eval(
             .max_depth(args.max_depth)
             .min_samples_split(args.min_samples_split)
             .min_gain_prune(args.prune)
-            .build(train_data, &dataset.metadata.header)?;
+            .build(
+                train_data,
+                &dataset.metadata.column_types,
+                &dataset.metadata.header,
+            )?;
 
         // Evaluate and store accuracy
         let accuracy = calculate_accuracy(&model, test_data);
@@ -196,7 +199,11 @@ fn split_eval(
         .max_depth(args.max_depth)
         .min_samples_split(args.min_samples_split)
         .min_gain_prune(args.prune)
-        .build(train_data, &dataset.metadata.header)?;
+        .build(
+            train_data,
+            &dataset.metadata.column_types,
+            &dataset.metadata.header,
+        )?;
 
     if let Some(ref plot_file) = args.plot {
         export_graph(&model, plot_file)?;
@@ -229,6 +236,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         println!("\nTraining decision tree (criterion: {criterion:?})...",);
         let mut model = DecisionTree::train(
             dataset.train_data,
+            &dataset.metadata.column_types,
             &dataset.metadata.header,
             &dataset.vocabulary,
             criterion,
