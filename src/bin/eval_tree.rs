@@ -1,5 +1,8 @@
 use clap::Parser;
-use decision_tree::data::{Sample, SampleValue, Vocabulary, load_single_csv, load_train_test_csv};
+use decision_tree::data::{
+    LoadedDataset, LoadedSplitDataset, Sample, SampleValue, Vocabulary, load_single_csv,
+    load_train_test_csv,
+};
 use decision_tree::export::export_graph;
 use decision_tree::tree::{Criterion, DecisionTree, DecisionTreeBuilder};
 use rand::SeedableRng;
@@ -104,14 +107,12 @@ fn calculate_accuracy(model: &DecisionTree, test_data: &[Sample]) -> f64 {
 }
 
 fn kfold_eval(
-    data: Vec<Sample>,
-    header: Vec<String>,
-    vocab: Vocabulary,
+    dataset: LoadedDataset,
     criterion: Criterion,
     args: &Args,
 ) -> Result<(), Box<dyn std::error::Error>> {
     println!("\nPerforming {}-fold cross-validation...", args.k_folds);
-    let folds = create_folds(&data, args.k_folds);
+    let folds = create_folds(&dataset.data, args.k_folds);
     let mut fold_accuracies = Vec::new();
 
     for i in 0..args.k_folds {
@@ -136,12 +137,12 @@ fn kfold_eval(
         // Train the model for this fold
         let model = DecisionTreeBuilder::new()
             .verbose(1)
-            .vocabulary(&vocab)
+            .vocabulary(&dataset.vocabulary)
             .criterion(criterion)
             .max_depth(args.max_depth)
             .min_samples_split(args.min_samples_split)
             .min_gain_prune(args.prune)
-            .build(train_data, &header)?;
+            .build(train_data, &dataset.metadata.header)?;
 
         // Evaluate and store accuracy
         let accuracy = calculate_accuracy(&model, test_data);
@@ -174,14 +175,12 @@ fn kfold_eval(
 }
 
 fn split_eval(
-    data: Vec<Sample>,
-    header: Vec<String>,
-    vocab: Vocabulary,
+    dataset: LoadedDataset,
     criterion: Criterion,
     args: &Args,
 ) -> Result<(), Box<dyn std::error::Error>> {
     println!("\nPerforming a simple train/test split...");
-    let (train_data, test_data) = split_data(&data, args.split_ratio);
+    let (train_data, test_data) = split_data(&dataset.data, args.split_ratio);
     println!(
         "Data split into {} training samples and {} test samples.",
         train_data.len(),
@@ -192,12 +191,12 @@ fn split_eval(
     println!("Training the decision tree model (criterion: {criterion:?})...",);
     let model = DecisionTreeBuilder::new()
         .verbose(1)
-        .vocabulary(&vocab)
+        .vocabulary(&dataset.vocabulary)
         .criterion(criterion)
         .max_depth(args.max_depth)
         .min_samples_split(args.min_samples_split)
         .min_gain_prune(args.prune)
-        .build(train_data, &header)?;
+        .build(train_data, &dataset.metadata.header)?;
 
     if let Some(ref plot_file) = args.plot {
         export_graph(&model, plot_file)?;
@@ -218,15 +217,20 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     if let Some(test_file) = args.test_file {
         // Case 1: External test file provided
-        let (header, train_data, test_data, vocab, _num_classes) =
+        let dataset: LoadedSplitDataset =
             load_train_test_csv(&args.file_path, &test_file, None, true)?;
+        println!(
+            "Dataset loaded successfully with {} training + {} test rows.",
+            dataset.train_data.len(),
+            dataset.test_data.len()
+        );
 
         // Train
         println!("\nTraining decision tree (criterion: {criterion:?})...",);
         let mut model = DecisionTree::train(
-            train_data,
-            &header,
-            &vocab,
+            dataset.train_data,
+            &dataset.metadata.header,
+            &dataset.vocabulary,
             criterion,
             args.max_depth,
             args.min_samples_split,
@@ -244,20 +248,23 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
 
         println!("\nEvaluating model accuracy on the external test set...");
-        let accuracy = calculate_accuracy(&model, &test_data);
+        let accuracy = calculate_accuracy(&model, &dataset.test_data);
         println!("\n--- Evaluation Result ---");
         println!("Model Accuracy: {accuracy:.2}%");
         println!("{}", "-".repeat(30));
     } else {
         // Case 2: Single file, split or k-fold
-        let (header, data, vocab, _num_classes) = load_single_csv(&args.file_path, None, true)?;
-        println!("Dataset loaded successfully with {} rows.", data.len());
+        let dataset: LoadedDataset = load_single_csv(&args.file_path, None, true)?;
+        println!(
+            "Dataset loaded successfully with {} rows.",
+            dataset.data.len()
+        );
 
         // Choose evaluation method
         if args.k_folds > 1 {
-            kfold_eval(data, header, vocab, criterion, &args)?;
+            kfold_eval(dataset, criterion, &args)?;
         } else {
-            split_eval(data, header, vocab, criterion, &args)?;
+            split_eval(dataset, criterion, &args)?;
         }
     }
 

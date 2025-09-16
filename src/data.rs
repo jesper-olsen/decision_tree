@@ -101,6 +101,34 @@ impl std::fmt::Display for SampleValue {
 
 pub type Sample = Vec<SampleValue>;
 
+#[derive(Debug, Clone)]
+pub enum ColumnType {
+    Numeric,
+    Categorical,
+    Mixed, // Contains both numeric and categorical values
+}
+
+#[derive(Debug)]
+pub struct DatasetMetadata {
+    pub header: Vec<String>,
+    pub column_types: Vec<ColumnType>,
+    pub target_column_index: usize,
+    pub num_classes: usize,
+}
+
+pub struct LoadedDataset {
+    pub metadata: DatasetMetadata,
+    pub data: Vec<Sample>,
+    pub vocabulary: Vocabulary,
+}
+
+pub struct LoadedSplitDataset {
+    pub metadata: DatasetMetadata,
+    pub train_data: Vec<Sample>,
+    pub test_data: Vec<Sample>,
+    pub vocabulary: Vocabulary,
+}
+
 /// Scan csv file, validate number of columns and add target column labels to vocab
 /// Return: header
 /// Scan csv file, validate number of columns and add target column labels to vocab
@@ -182,7 +210,7 @@ fn read_csv(
     vocab: &mut Vocabulary,
     target_idx: usize,
     expected_columns: usize,
-) -> Result<Vec<Sample>, Box<dyn std::error::Error>> {
+) -> Result<(Vec<Sample>, Vec<ColumnType>), Box<dyn std::error::Error>> {
     let file = File::open(fname)?;
     let reader = BufReader::new(file);
     let mut lines = reader.lines();
@@ -192,6 +220,9 @@ fn read_csv(
 
     let mut data = Vec::new();
     let mut line_number = 1;
+
+    // Track what we've seen in each column - has_numeric, has_string, has_missing
+    let mut column_info: Vec<(bool, bool, bool)> = vec![(false, false, false); expected_columns];
 
     for line_result in lines {
         line_number += 1;
@@ -211,11 +242,13 @@ fn read_csv(
             .enumerate()
             .map(|(idx, s)| {
                 if s == "?" {
+                    column_info[idx].2 = true; // has_missing
                     return SampleValue::None;
                 }
 
                 // Target column - must already be in vocabulary
                 if idx == target_idx {
+                    column_info[idx].1 = true; // has_string
                     if let Some(id) = vocab.get_id(s) {
                         return SampleValue::String(id);
                     } else {
@@ -226,10 +259,12 @@ fn read_csv(
 
                 // For non-target columns
                 if let Ok(f) = s.parse::<f64>() {
+                    column_info[idx].0 = true; // has_numeric
                     return SampleValue::Numeric(f);
                 }
 
                 // String value - intern it
+                column_info[idx].1 = true; // has_string
                 let id = vocab.get_or_intern(s);
                 SampleValue::String(id)
             })
@@ -238,7 +273,20 @@ fn read_csv(
         data.push(row);
     }
 
-    Ok(data)
+    // Convert column info to ColumnType
+    let column_types = column_info
+        .into_iter()
+        .map(|(has_num, has_str, _)| {
+            match (has_num, has_str) {
+                (true, false) => ColumnType::Numeric,
+                (false, true) => ColumnType::Categorical,
+                (true, true) => ColumnType::Mixed,
+                (false, false) => ColumnType::Categorical, // All missing - treat as categorical
+            }
+        })
+        .collect();
+
+    Ok((data, column_types))
 }
 
 /// Load a single CSV file
@@ -246,7 +294,7 @@ pub fn load_single_csv(
     fname: &str,
     target_column: Option<usize>,
     verbose: bool,
-) -> Result<(Vec<String>, Vec<Sample>, Vocabulary, usize), Box<dyn std::error::Error>> {
+) -> Result<LoadedDataset, Box<dyn std::error::Error>> {
     let mut vocab = Vocabulary::new();
 
     // First pass: scan for validation and target labels
@@ -254,9 +302,24 @@ pub fn load_single_csv(
     let num_classes = vocab.len(); // Number of unique target labels
 
     // Second pass: read the data
-    let data = read_csv(fname, &mut vocab, target_idx, header.len())?;
+    let (data, column_types) = read_csv(fname, &mut vocab, target_idx, header.len())?;
 
-    Ok((header, data, vocab, num_classes))
+    if verbose {
+        println!("Column types: {column_types:?}");
+    }
+
+    let metadata = DatasetMetadata {
+        header,
+        column_types,
+        target_column_index: target_idx,
+        num_classes,
+    };
+
+    Ok(LoadedDataset {
+        metadata,
+        data,
+        vocabulary: vocab,
+    })
 }
 
 /// Load separate train and test CSV files
@@ -266,16 +329,15 @@ pub fn load_train_test_csv(
     test_fname: &str,
     target_column: Option<usize>,
     verbose: bool,
-) -> Result<(Vec<String>, Vec<Sample>, Vec<Sample>, Vocabulary, usize), Box<dyn std::error::Error>>
-{
+) -> Result<LoadedSplitDataset, Box<dyn std::error::Error>> {
     let mut vocab = Vocabulary::new();
 
     // Scan both files to build complete vocabulary
-    let (train_header, train_target_idx, _) =
+    let (train_header, train_target_idx, _num_rows1) =
         scan_csv(train_fname, &mut vocab, target_column, verbose)?;
     let num_classes = vocab.len(); // Number of unique target labels from training
 
-    let (test_header, test_target_idx, _) =
+    let (test_header, test_target_idx, _num_rows2) =
         scan_csv(test_fname, &mut vocab, target_column, verbose)?;
 
     // Validate headers match
@@ -298,13 +360,29 @@ pub fn load_train_test_csv(
     }
 
     // Read the actual data
-    let train_data = read_csv(
+    let (train_data, column_types) = read_csv(
         train_fname,
         &mut vocab,
         train_target_idx,
         train_header.len(),
     )?;
-    let test_data = read_csv(test_fname, &mut vocab, test_target_idx, test_header.len())?;
+    let (test_data, _) = read_csv(test_fname, &mut vocab, test_target_idx, test_header.len())?;
 
-    Ok((train_header, train_data, test_data, vocab, num_classes))
+    if verbose {
+        println!("Column types: {column_types:?}");
+    }
+
+    let metadata = DatasetMetadata {
+        header: train_header,
+        column_types,
+        target_column_index: train_target_idx,
+        num_classes,
+    };
+
+    Ok(LoadedSplitDataset {
+        metadata,
+        train_data,
+        test_data,
+        vocabulary: vocab,
+    })
 }

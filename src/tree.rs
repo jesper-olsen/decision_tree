@@ -71,6 +71,100 @@ impl<'a> DecisionTree<'a> {
         DecisionTree::new(root, header, vocab)
     }
 
+    // Add this helper function
+    fn find_best_numeric_split(
+        all_data: &[Sample],
+        row_indices: &[usize],
+        col: usize,
+        current_score: f64,
+        criterion: &dyn Fn(&Counter) -> f64,
+    ) -> Option<(f64, SampleValue, Vec<usize>, Vec<usize>)> {
+        // Extract (value, class_label, row_idx) tuples
+        let mut value_label_idx: Vec<(f64, usize, usize)> = Vec::with_capacity(row_indices.len());
+
+        for &row_idx in row_indices {
+            if let (SampleValue::Numeric(val), Some(SampleValue::String(label))) =
+                (&all_data[row_idx][col], all_data[row_idx].last())
+            {
+                value_label_idx.push((*val, *label, row_idx));
+            }
+        }
+
+        if value_label_idx.len() < 2 {
+            return None;
+        }
+
+        // Sort by value
+        value_label_idx.sort_unstable_by(|a, b| a.0.partial_cmp(&b.0).unwrap());
+
+        // Initialize class counts
+        let mut left_counts: Counter = HashMap::new();
+        let mut right_counts: Counter = HashMap::new();
+
+        // Start with all samples in the right partition
+        for &(_, label, _) in &value_label_idx {
+            *right_counts.entry(label).or_insert(0) += 1;
+        }
+
+        let mut best_gain = 0.0;
+        let mut best_split_value = 0.0;
+        let mut best_split_idx = 0;
+
+        // Single pass through sorted data
+        for i in 0..value_label_idx.len() - 1 {
+            let (val, label, _) = value_label_idx[i];
+
+            // Move sample from right to left
+            *left_counts.entry(label).or_insert(0) += 1;
+            let right_count = right_counts.get_mut(&label).unwrap();
+            *right_count -= 1;
+            if *right_count == 0 {
+                right_counts.remove(&label);
+            }
+
+            // Only consider split if next value is different
+            if val < value_label_idx[i + 1].0 {
+                let left_size = i + 1;
+                let right_size = value_label_idx.len() - left_size;
+                let total_size = value_label_idx.len();
+
+                let p_left = left_size as f64 / total_size as f64;
+                let p_right = right_size as f64 / total_size as f64;
+
+                let gain = current_score
+                    - p_left * criterion(&left_counts)
+                    - p_right * criterion(&right_counts);
+
+                if gain > best_gain {
+                    best_gain = gain;
+                    best_split_value = (val + value_label_idx[i + 1].0) / 2.0;
+                    best_split_idx = i + 1;
+                }
+            }
+        }
+
+        if best_gain > 0.0 {
+            // Reconstruct the index sets
+            let set1: Vec<usize> = value_label_idx[..best_split_idx]
+                .iter()
+                .map(|t| t.2)
+                .collect();
+            let set2: Vec<usize> = value_label_idx[best_split_idx..]
+                .iter()
+                .map(|t| t.2)
+                .collect();
+
+            Some((
+                best_gain,
+                SampleValue::Numeric(best_split_value),
+                set1,
+                set2,
+            ))
+        } else {
+            None
+        }
+    }
+
     fn grow_tree(
         all_data: &[Sample],
         row_indices: &[usize],
@@ -93,7 +187,7 @@ impl<'a> DecisionTree<'a> {
             samples: row_indices.len(),
         };
 
-        let is_max_depth_reached = max_depth.map_or(false, |max| depth >= max);
+        let is_max_depth_reached = max_depth.is_some_and(|max| depth >= max);
         if is_max_depth_reached || row_indices.len() < min_samples_split {
             return Node::leaf(current_counts, summary);
         }
@@ -217,7 +311,7 @@ fn split_set(
     column: usize,
     value: &SampleValue,
 ) -> (Vec<usize>, Vec<usize>) {
-    let mut set1_indices = Vec::new();
+    let mut set1_indices = Vec::new(); // TODO with_capacity(row_indices.len());
     let mut set2_indices = Vec::new();
 
     for &row_idx in row_indices {
@@ -263,7 +357,7 @@ fn entropy(counts: &Counter) -> f64 {
     let total_f64 = total as f64;
     -counts
         .values()
-        .filter(|&&c| c>0)
+        .filter(|&&c| c > 0)
         .map(|&c| {
             let p = c as f64 / total_f64;
             p * p.log2()

@@ -1,5 +1,5 @@
 use clap::Parser;
-use decision_tree::data::{Sample, SampleValue, Vocabulary, load_single_csv};
+use decision_tree::data::{LoadedDataset, Sample, SampleValue, Vocabulary, load_single_csv};
 use decision_tree::export::export_graph;
 use decision_tree::node::Counter;
 use decision_tree::tree::{Criterion, DecisionTreeBuilder};
@@ -39,13 +39,13 @@ pub fn small_example(
     criterion: Criterion,
     plot: Option<&str>,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let (header, training_data, vocab, _num_classes) = load_single_csv("data/tbc.csv", None, true)?;
+    let dataset: LoadedDataset = load_single_csv("data/tbc.csv", None, true)?;
 
     let dt = DecisionTreeBuilder::new()
-        .vocabulary(&vocab)
+        .vocabulary(&dataset.vocabulary)
         .criterion(criterion)
         .min_samples_split(2)
-        .build(training_data, &header)?;
+        .build(dataset.data, &dataset.metadata.header)?;
 
     println!("{dt}");
 
@@ -53,25 +53,25 @@ pub fn small_example(
 
     // Example 1: A sample with complete data
     let complete_sample: Sample = vec![
-        SampleValue::String(vocab.get_id("ohne").unwrap()),
-        SampleValue::String(vocab.get_id("leicht").unwrap()),
-        SampleValue::String(vocab.get_id("Streifen").unwrap()),
-        SampleValue::String(vocab.get_id("normal").unwrap()),
-        SampleValue::String(vocab.get_id("normal").unwrap()),
+        SampleValue::String(dataset.vocabulary.get_id("ohne").unwrap()),
+        SampleValue::String(dataset.vocabulary.get_id("leicht").unwrap()),
+        SampleValue::String(dataset.vocabulary.get_id("Streifen").unwrap()),
+        SampleValue::String(dataset.vocabulary.get_id("normal").unwrap()),
+        SampleValue::String(dataset.vocabulary.get_id("normal").unwrap()),
     ];
     let result1 = dt.classify(&complete_sample, false);
-    print_classification_result(&complete_sample, &result1, &vocab);
+    print_classification_result(&complete_sample, &result1, &dataset.vocabulary);
 
     // Example 2: A sample with missing data
     let missing_sample: Sample = vec![
         SampleValue::None,
-        SampleValue::String(vocab.get_id("leicht").unwrap()),
+        SampleValue::String(dataset.vocabulary.get_id("leicht").unwrap()),
         SampleValue::None,
-        SampleValue::String(vocab.get_id("Flocken").unwrap()),
-        SampleValue::String(vocab.get_id("fiepend").unwrap()),
+        SampleValue::String(dataset.vocabulary.get_id("Flocken").unwrap()),
+        SampleValue::String(dataset.vocabulary.get_id("fiepend").unwrap()),
     ];
     let result2 = dt.classify(&missing_sample, true);
-    print_classification_result(&missing_sample, &result2, &vocab);
+    print_classification_result(&missing_sample, &result2, &dataset.vocabulary);
 
     if let Some(filename) = plot {
         export_graph(&dt, filename)?;
@@ -84,14 +84,13 @@ pub fn bigger_example(
     criterion: Criterion,
     plot: Option<&str>,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let (header, training_data, vocab, _num_classes) =
-        load_single_csv("data/iris.csv", None, true)?;
+    let dataset: LoadedDataset = load_single_csv("data/iris.csv", None, true)?;
 
     let mut dt = DecisionTreeBuilder::new()
-        .vocabulary(&vocab)
+        .vocabulary(&dataset.vocabulary)
         .criterion(criterion)
         .min_samples_split(2)
-        .build(training_data, &header)?;
+        .build(dataset.data, &dataset.metadata.header)?;
 
     println!("{dt}");
 
@@ -109,7 +108,7 @@ pub fn bigger_example(
         SampleValue::Numeric(1.5),
     ];
     let result1 = dt.classify(&complete_sample, false);
-    print_classification_result(&complete_sample, &result1, &vocab);
+    print_classification_result(&complete_sample, &result1, &dataset.vocabulary);
 
     // Example 2: A sample with missing data
     let missing_sample: Sample = vec![
@@ -119,7 +118,7 @@ pub fn bigger_example(
         SampleValue::Numeric(1.5),
     ];
     let result2 = dt.classify(&missing_sample, true);
-    print_classification_result(&missing_sample, &result2, &vocab);
+    print_classification_result(&missing_sample, &result2, &dataset.vocabulary);
 
     if let Some(filename) = plot {
         export_graph(&dt, filename)?;
