@@ -263,6 +263,7 @@ fn entropy(counts: &Counter) -> f64 {
     let total_f64 = total as f64;
     -counts
         .values()
+        .filter(|&&c| c>0)
         .map(|&c| {
             let p = c as f64 / total_f64;
             p * p.log2()
