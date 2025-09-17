@@ -1,4 +1,4 @@
-use crate::data::{ColumnType, Sample, SampleValue, Vocabulary};
+use crate::data::{ColumnType, Sample, SampleValue, Vocabulary, DatasetMetadata};
 use crate::error::TreeError;
 use crate::node::{Counter, Node, Summary};
 use std::collections::HashMap;
@@ -26,16 +26,14 @@ impl FromStr for Criterion {
 
 pub struct DecisionTree<'a> {
     pub root: Node,
-    pub header: &'a [String],
-    pub vocab: &'a Vocabulary,
+    pub meta: &'a DatasetMetadata,
 }
 
 impl<'a> DecisionTree<'a> {
-    pub fn new(root: Node, header: &'a [String], vocab: &'a Vocabulary) -> Self {
+    pub fn new(root: Node, meta: &'a DatasetMetadata) -> Self {
         DecisionTree {
             root,
-            header,
-            vocab,
+            meta,
         }
     }
 
@@ -52,9 +50,7 @@ impl<'a> DecisionTree<'a> {
 
     pub fn train(
         data: Vec<Sample>,
-        column_types: &[ColumnType],
-        header: &'a [String],
-        vocab: &'a Vocabulary,
+        meta: &'a DatasetMetadata,
         criterion: Criterion,
         max_depth: Option<usize>,
         min_samples_split: usize,
@@ -63,14 +59,14 @@ impl<'a> DecisionTree<'a> {
         let row_indices: Vec<usize> = (0..data.len()).collect();
         let root = Self::grow_tree(
             &data,
-            column_types,
+            &meta.column_types,
             &row_indices,
             min_samples_split,
             max_depth,
             eval_fn.as_ref(),
             0,
         );
-        DecisionTree::new(root, header, vocab)
+        DecisionTree::new(root, meta)
     }
 
     // specialisation of find_best_split - avoids 'redundant' splits  
@@ -369,7 +365,7 @@ impl<'a> std::fmt::Display for DecisionTree<'a> {
         write!(
             f,
             "{}",
-            self.root.to_string(Some(self.header), "", self.vocab)
+            self.root.to_string(Some(&self.meta.header), "", &self.meta.vocabulary)
         )
     }
 }
@@ -513,19 +509,15 @@ impl<'a> DecisionTreeBuilder<'a> {
     pub fn build(
         self,
         data: Vec<Sample>,
-        column_types: &[ColumnType],
-        header: &'a [String],
+        meta: &'a DatasetMetadata,
     ) -> Result<DecisionTree<'a>, TreeError> {
         if data.is_empty() {
             return Err(TreeError::EmptyDataset);
         }
-        let vocab = self.vocab.ok_or(TreeError::MissingVocabulary)?;
 
         let mut tree = DecisionTree::train(
             data,
-            column_types,
-            header,
-            vocab,
+            meta,
             self.criterion,
             self.max_depth,
             self.min_samples_split,

@@ -114,23 +114,20 @@ pub struct DatasetMetadata {
     pub column_types: Vec<ColumnType>,
     pub target_column_index: usize,
     pub num_classes: usize,
+    pub vocabulary: Vocabulary, 
 }
 
 pub struct LoadedDataset {
     pub metadata: DatasetMetadata,
     pub data: Vec<Sample>,
-    pub vocabulary: Vocabulary,
 }
 
 pub struct LoadedSplitDataset {
     pub metadata: DatasetMetadata,
     pub train_data: Vec<Sample>,
     pub test_data: Vec<Sample>,
-    pub vocabulary: Vocabulary,
 }
 
-/// Scan csv file, validate number of columns and add target column labels to vocab
-/// Return: header
 /// Scan csv file, validate number of columns and add target column labels to vocab
 /// Return: (header, target_column_index, num_rows)
 fn scan_csv(
@@ -313,17 +310,16 @@ pub fn load_single_csv(
         column_types,
         target_column_index: target_idx,
         num_classes,
+        vocabulary: vocab, 
     };
 
     Ok(LoadedDataset {
         metadata,
         data,
-        vocabulary: vocab,
     })
 }
 
 /// Load separate train and test CSV files
-/// Returns: header, training_samples, test samples, vocabulary, num_classes
 pub fn load_train_test_csv(
     train_fname: &str,
     test_fname: &str,
@@ -377,12 +373,12 @@ pub fn load_train_test_csv(
         column_types,
         target_column_index: train_target_idx,
         num_classes,
+        vocabulary: vocab, 
     };
 
     Ok(LoadedSplitDataset {
         metadata,
         train_data,
         test_data,
-        vocabulary: vocab,
     })
 }

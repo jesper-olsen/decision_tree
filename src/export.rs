@@ -56,8 +56,8 @@ fn generate_dot(tree: &DecisionTree) -> String {
     let mut node_counter = 0;
     export_node_recursive(
         &tree.root,
-        tree.header,
-        tree.vocab,
+        &tree.meta.header,
+        &tree.meta.vocabulary,
         &mut dot_content,
         &mut node_counter,
     );

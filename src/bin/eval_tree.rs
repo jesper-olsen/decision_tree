@@ -136,15 +136,13 @@ fn kfold_eval(
         // Train the model for this fold
         let model = DecisionTreeBuilder::new()
             .verbose(1)
-            .vocabulary(&dataset.vocabulary)
             .criterion(criterion)
             .max_depth(args.max_depth)
             .min_samples_split(args.min_samples_split)
             .min_gain_prune(args.prune)
             .build(
                 train_data,
-                &dataset.metadata.column_types,
-                &dataset.metadata.header,
+                &dataset.metadata
             )?;
 
         // Evaluate and store accuracy
@@ -194,16 +192,11 @@ fn split_eval(
     println!("Training the decision tree model (criterion: {criterion:?})...",);
     let model = DecisionTreeBuilder::new()
         .verbose(1)
-        .vocabulary(&dataset.vocabulary)
         .criterion(criterion)
         .max_depth(args.max_depth)
         .min_samples_split(args.min_samples_split)
         .min_gain_prune(args.prune)
-        .build(
-            train_data,
-            &dataset.metadata.column_types,
-            &dataset.metadata.header,
-        )?;
+        .build( train_data, &dataset.metadata)?;
 
     if let Some(ref plot_file) = args.plot {
         export_graph(&model, plot_file)?;
@@ -236,9 +229,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         println!("\nTraining decision tree (criterion: {criterion:?})...",);
         let mut model = DecisionTree::train(
             dataset.train_data,
-            &dataset.metadata.column_types,
-            &dataset.metadata.header,
-            &dataset.vocabulary,
+            &dataset.metadata,
             criterion,
             args.max_depth,
             args.min_samples_split,
