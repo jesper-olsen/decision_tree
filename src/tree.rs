@@ -57,7 +57,7 @@ impl<'a> DecisionTree<'a> {
 
         let root = Self::grow_tree(
             data,
-            &meta.column_types,
+            meta,
             &row_indices,
             min_samples_split,
             max_depth,
@@ -75,13 +75,15 @@ impl<'a> DecisionTree<'a> {
         row_indices: &[usize],
         col: usize,
         criterion: &dyn Fn(&Counter) -> f64,
+        target_idx: usize,
     ) -> Option<(f64, SampleValue, Vec<usize>, Vec<usize>)> {
         // Collect non-missing numeric values with their class labels and row indices
         let mut value_label_idx: Vec<(f64, usize, usize)> = Vec::new();
         let mut missing_indices: Vec<usize> = Vec::new();
 
         for &row_idx in row_indices {
-            match (&all_data[row_idx][col], all_data[row_idx].last()) {
+            let label_value = all_data[row_idx].get(target_idx);
+            match (&all_data[row_idx][col], label_value) {
                 (SampleValue::Numeric(val), Some(SampleValue::String(label))) => {
                     value_label_idx.push((*val, *label, row_idx));
                 }
@@ -154,8 +156,8 @@ impl<'a> DecisionTree<'a> {
                     } else {
                         let p_actual = set1.len() as f64 / row_indices.len() as f64;
                         current_score
-                            - p_actual * criterion(&count_classes(all_data, &set1))
-                            - (1.0 - p_actual) * criterion(&count_classes(all_data, &set2))
+                            - p_actual * criterion(&count_classes(all_data, &set1, target_idx))
+                            - (1.0 - p_actual) * criterion(&count_classes(all_data, &set2, target_idx))
                     }
                 };
 
@@ -199,6 +201,7 @@ impl<'a> DecisionTree<'a> {
         row_indices: &[usize],
         col: usize,
         criterion: &dyn Fn(&Counter) -> f64,
+        target_idx: usize,
     ) -> Option<(f64, SampleValue, Vec<usize>, Vec<usize>)> {
         let mut best_gain = 0.0;
         let mut best: Option<(SampleValue, Vec<usize>, Vec<usize>)> = None;
@@ -221,8 +224,8 @@ impl<'a> DecisionTree<'a> {
             let p = set1_indices.len() as f64 / row_indices.len() as f64;
 
             let gain = current_score
-                - p * criterion(&count_classes(all_data, &set1_indices))
-                - (1.0 - p) * criterion(&count_classes(all_data, &set2_indices));
+                - p * criterion(&count_classes(all_data, &set1_indices, target_idx))
+                - (1.0 - p) * criterion(&count_classes(all_data, &set2_indices, target_idx));
 
             if gain > best_gain {
                 best_gain = gain;
@@ -238,7 +241,7 @@ impl<'a> DecisionTree<'a> {
 
     fn grow_tree(
         all_data: &[Sample],
-        column_types: &[ColumnType],
+        meta: &'a DatasetMetadata,
         row_indices: &[usize],
         min_samples_split: usize,
         max_depth: Option<usize>,
@@ -252,7 +255,8 @@ impl<'a> DecisionTree<'a> {
             return Err(TreeError::EmptySplit);
         }
 
-        let current_counts = count_classes(all_data, row_indices);
+        let target_idx = meta.target_column_index;
+        let current_counts = count_classes(all_data, row_indices, target_idx);
         let current_score = criterion(&current_counts);
 
         // Pre-pruning
@@ -271,18 +275,19 @@ impl<'a> DecisionTree<'a> {
         let mut best_rule: Option<(usize, SampleValue)> = None;
         let mut best_sets: Option<(Vec<usize>, Vec<usize>)> = None;
 
-        let column_count = all_data[0].len() - 1;
-        for col in 0..column_count {
-            let split = match column_types[col] {
+        let total_columns = meta.header.len();
+        for col in (0..total_columns).filter(|&i| i!=target_idx) {
+            let split = match meta.column_types[col] {
                 ColumnType::Numeric => Self::find_best_numeric_split(
                     current_score,
                     all_data,
                     row_indices,
                     col,
                     criterion,
+                    target_idx,
                 ),
                 ColumnType::Categorical => {
-                    Self::find_best_split(current_score, all_data, row_indices, col, criterion)
+                    Self::find_best_split(current_score, all_data, row_indices, col, criterion, target_idx)
                 }
                 ColumnType::Mixed => return Err(TreeError::MixedTypesInColumn),
             };
@@ -302,7 +307,7 @@ impl<'a> DecisionTree<'a> {
 
             let true_branch = Box::new(Self::grow_tree(
                 all_data,
-                column_types,
+                meta,
                 &set1_indices,
                 min_samples_split,
                 max_depth,
@@ -312,7 +317,7 @@ impl<'a> DecisionTree<'a> {
 
             let false_branch = Box::new(Self::grow_tree(
                 all_data,
-                column_types,
+                meta,
                 &set2_indices,
                 min_samples_split,
                 max_depth,
@@ -410,11 +415,11 @@ fn split_set(
     (set1_indices, set2_indices)
 }
 
-fn count_classes(all_data: &[Sample], row_indices: &[usize]) -> Counter {
+fn count_classes(all_data: &[Sample], row_indices: &[usize], target_idx: usize) -> Counter {
     let mut counts = HashMap::new();
     for &row_idx in row_indices {
         let row = &all_data[row_idx];
-        if let Some(SampleValue::String(id)) = row.last() {
+        if let Some(SampleValue::String(id)) = row.get(target_idx) {
             *counts.entry(*id).or_insert(0) += 1;
         }
     }
