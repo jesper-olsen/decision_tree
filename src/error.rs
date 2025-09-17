@@ -10,12 +10,14 @@ pub enum TreeError {
 
     // Data errors
     EmptyDataset,
+    MixedTypesInColumn,
     InvalidDataFormat(String),
     InconsistentFeatures { expected: usize, found: usize },
 
     // Training errors
     NoValidSplit,
     EmptyLeaf,
+    EmptySplit,
 
     // IO errors
     IoError(io::Error),
@@ -28,6 +30,12 @@ pub enum TreeError {
 impl fmt::Display for TreeError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            TreeError::MixedTypesInColumn => {
+                write!(
+                    f,
+                    "Columns can not contain both categorical and numeric values"
+                )
+            }
             TreeError::InvalidConfiguration(msg) => {
                 write!(f, "Invalid configuration: {msg}")
             }
@@ -36,6 +44,9 @@ impl fmt::Display for TreeError {
             }
             TreeError::EmptyDataset => {
                 write!(f, "Cannot build tree from empty dataset")
+            }
+            TreeError::EmptySplit => {
+                write!(f, "Cannot build tree from empty set of row indices.")
             }
             TreeError::InvalidDataFormat(msg) => {
                 write!(f, "Invalid data format: {msg}")

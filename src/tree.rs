@@ -1,4 +1,4 @@
-use crate::data::{ColumnType, Sample, SampleValue, Vocabulary, DatasetMetadata};
+use crate::data::{ColumnType, DatasetMetadata, Sample, SampleValue};
 use crate::error::TreeError;
 use crate::node::{Counter, Node, Summary};
 use std::collections::HashMap;
@@ -31,10 +31,7 @@ pub struct DecisionTree<'a> {
 
 impl<'a> DecisionTree<'a> {
     pub fn new(root: Node, meta: &'a DatasetMetadata) -> Self {
-        DecisionTree {
-            root,
-            meta,
-        }
+        DecisionTree { root, meta }
     }
 
     pub fn size(&self) -> usize {
@@ -49,27 +46,29 @@ impl<'a> DecisionTree<'a> {
     }
 
     pub fn train(
-        data: Vec<Sample>,
+        data: &'a [Sample],
         meta: &'a DatasetMetadata,
         criterion: Criterion,
         max_depth: Option<usize>,
         min_samples_split: usize,
-    ) -> Self {
+    ) -> Result<Self, TreeError> {
         let eval_fn = Self::eval_fn(criterion);
         let row_indices: Vec<usize> = (0..data.len()).collect();
+
         let root = Self::grow_tree(
-            &data,
+            data,
             &meta.column_types,
             &row_indices,
             min_samples_split,
             max_depth,
             eval_fn.as_ref(),
             0,
-        );
-        DecisionTree::new(root, meta)
+        )?;
+
+        Ok(DecisionTree::new(root, meta))
     }
 
-    // specialisation of find_best_split - avoids 'redundant' splits  
+    // specialisation of find_best_split - avoids 'redundant' splits
     fn find_best_numeric_split(
         current_score: f64,
         all_data: &[Sample],
@@ -211,7 +210,7 @@ impl<'a> DecisionTree<'a> {
 
         for value in column_values {
             if matches!(value, SampleValue::None) {
-                continue; // don't split on a missing value 
+                continue; // don't split on a missing value
             }
 
             let (set1_indices, set2_indices) = split_set(all_data, row_indices, col, &value);
@@ -245,10 +244,12 @@ impl<'a> DecisionTree<'a> {
         max_depth: Option<usize>,
         criterion: &dyn Fn(&Counter) -> f64,
         depth: usize,
-    ) -> Node {
+    ) -> Result<Node, TreeError> {
         if row_indices.is_empty() {
-            // The only way this can happen is if the initial dataset was empty.
-            panic!("grow_tree cannot be called with an empty set of row indices.");
+            // This case can happen if a split results in one of the branches
+            // having no data (e.g., only missing values that go both ways,
+            // but no actual values for one side).
+            return Err(TreeError::EmptySplit);
         }
 
         let current_counts = count_classes(all_data, row_indices);
@@ -262,7 +263,7 @@ impl<'a> DecisionTree<'a> {
 
         let is_max_depth_reached = max_depth.is_some_and(|max| depth >= max);
         if is_max_depth_reached || row_indices.len() < min_samples_split {
-            return Node::leaf(current_counts, summary);
+            return Ok(Node::leaf(current_counts, summary));
         }
 
         // find best gain
@@ -283,24 +284,21 @@ impl<'a> DecisionTree<'a> {
                 ColumnType::Categorical => {
                     Self::find_best_split(current_score, all_data, row_indices, col, criterion)
                 }
-                ColumnType::Mixed => panic!("not supposed to mix."),
+                ColumnType::Mixed => return Err(TreeError::MixedTypesInColumn),
             };
-            if let Some((gain, value, set1, set2)) = split
-                && gain > best_gain
-            {
-                best_gain = gain;
-                best_rule = Some((col, value));
-                best_sets = Some((set1, set2));
+            if let Some((gain, value, set1, set2)) = split {
+                if gain > best_gain {
+                    best_gain = gain;
+                    best_rule = Some((col, value));
+                    best_sets = Some((set1, set2));
+                }
             }
         }
 
         if best_gain > 0.0 {
-            let Some((col, value)) = best_rule else {
-                unreachable!("best_gain > 0.0 but best_rule is None");
-            };
-            let Some((set1_indices, set2_indices)) = best_sets else {
-                unreachable!("best_gain > 0.0 but best_sets is None");
-            };
+            let (col, value) = best_rule.expect("best_gain > 0.0 but best_rule is None");
+            let (set1_indices, set2_indices) =
+                best_sets.expect("best_gain > 0.0 but best_sets is None");
 
             let true_branch = Box::new(Self::grow_tree(
                 all_data,
@@ -310,7 +308,7 @@ impl<'a> DecisionTree<'a> {
                 max_depth,
                 criterion,
                 depth + 1,
-            ));
+            )?);
 
             let false_branch = Box::new(Self::grow_tree(
                 all_data,
@@ -320,11 +318,17 @@ impl<'a> DecisionTree<'a> {
                 max_depth,
                 criterion,
                 depth + 1,
-            ));
+            )?);
 
-            Node::internal(col, value, true_branch, false_branch, summary)
+            Ok(Node::internal(
+                col,
+                value,
+                true_branch,
+                false_branch,
+                summary,
+            ))
         } else {
-            Node::leaf(current_counts, summary)
+            Ok(Node::leaf(current_counts, summary))
         }
     }
 
@@ -341,6 +345,7 @@ impl<'a> DecisionTree<'a> {
     /// Classifies a sample, returning a map of class IDs to their scores/counts.
     /// Handles missing data by calculating weighted scores and rounding them to the
     /// nearest integer count.
+    /// TODO: return HashMap<String,f64> instead of rounding?
     pub fn classify(&self, sample: &Sample, handle_missing: bool) -> Counter {
         if handle_missing {
             let weighted_counts = self.root.classify_with_missing_data(sample);
@@ -365,7 +370,8 @@ impl<'a> std::fmt::Display for DecisionTree<'a> {
         write!(
             f,
             "{}",
-            self.root.to_string(Some(&self.meta.header), "", &self.meta.vocabulary)
+            self.root
+                .to_string(Some(&self.meta.header), "", &self.meta.vocabulary)
         )
     }
 }
@@ -378,7 +384,7 @@ fn split_set(
     column: usize,
     value: &SampleValue,
 ) -> (Vec<usize>, Vec<usize>) {
-    let mut set1_indices = Vec::new(); // TODO with_capacity(row_indices.len());
+    let mut set1_indices = Vec::new();
     let mut set2_indices = Vec::new();
 
     for &row_idx in row_indices {
@@ -448,22 +454,21 @@ fn gini(counts: &Counter) -> f64 {
         .sum::<f64>()
 }
 
-pub struct DecisionTreeBuilder<'a> {
+pub struct DecisionTreeBuilder {
     verbose: u8,
     criterion: Criterion,
     max_depth: Option<usize>,
     min_samples_split: usize,
     min_gain_prune: Option<f64>,
-    vocab: Option<&'a Vocabulary>,
 }
 
-impl<'a> Default for DecisionTreeBuilder<'a> {
+impl Default for DecisionTreeBuilder {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl<'a> DecisionTreeBuilder<'a> {
+impl DecisionTreeBuilder {
     pub fn new() -> Self {
         // Sensible defaults
         Self {
@@ -472,7 +477,6 @@ impl<'a> DecisionTreeBuilder<'a> {
             max_depth: None,
             min_samples_split: 2,
             min_gain_prune: None,
-            vocab: None,
         }
     }
 
@@ -501,14 +505,9 @@ impl<'a> DecisionTreeBuilder<'a> {
         self
     }
 
-    pub fn vocabulary(mut self, vocab: &'a Vocabulary) -> Self {
-        self.vocab = Some(vocab);
-        self
-    }
-
-    pub fn build(
+    pub fn build<'a>(
         self,
-        data: Vec<Sample>,
+        data: &'a [Sample],
         meta: &'a DatasetMetadata,
     ) -> Result<DecisionTree<'a>, TreeError> {
         if data.is_empty() {
@@ -521,7 +520,8 @@ impl<'a> DecisionTreeBuilder<'a> {
             self.criterion,
             self.max_depth,
             self.min_samples_split,
-        );
+        )?;
+
         if self.verbose > 0 {
             println!("Trained a model with {} nodes", tree.size());
         }

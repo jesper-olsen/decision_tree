@@ -140,10 +140,7 @@ fn kfold_eval(
             .max_depth(args.max_depth)
             .min_samples_split(args.min_samples_split)
             .min_gain_prune(args.prune)
-            .build(
-                train_data,
-                &dataset.metadata
-            )?;
+            .build(&train_data, &dataset.metadata)?;
 
         // Evaluate and store accuracy
         let accuracy = calculate_accuracy(&model, test_data);
@@ -196,7 +193,7 @@ fn split_eval(
         .max_depth(args.max_depth)
         .min_samples_split(args.min_samples_split)
         .min_gain_prune(args.prune)
-        .build( train_data, &dataset.metadata)?;
+        .build(&train_data, &dataset.metadata)?;
 
     if let Some(ref plot_file) = args.plot {
         export_graph(&model, plot_file)?;
@@ -228,12 +225,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         // Train
         println!("\nTraining decision tree (criterion: {criterion:?})...",);
         let mut model = DecisionTree::train(
-            dataset.train_data,
+            &dataset.train_data,
             &dataset.metadata,
             criterion,
             args.max_depth,
             args.min_samples_split,
-        );
+        )?;
         println!("Trained a model with {} nodes", model.size());
 
         if args.prune > 0.0 {

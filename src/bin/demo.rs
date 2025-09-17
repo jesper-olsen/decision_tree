@@ -44,10 +44,7 @@ pub fn small_example(
     let dt = DecisionTreeBuilder::new()
         .criterion(criterion)
         .min_samples_split(2)
-        .build(
-            dataset.data,
-            &dataset.metadata
-        )?;
+        .build(&dataset.data, &dataset.metadata)?;
 
     println!("{dt}");
 
@@ -91,10 +88,7 @@ pub fn bigger_example(
     let mut dt = DecisionTreeBuilder::new()
         .criterion(criterion)
         .min_samples_split(2)
-        .build(
-            dataset.data,
-            &dataset.metadata
-        )?;
+        .build(&dataset.data, &dataset.metadata)?;
 
     println!("{dt}");
 
