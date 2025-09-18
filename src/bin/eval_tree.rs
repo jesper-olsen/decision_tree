@@ -46,6 +46,10 @@ struct Args {
     /// Minimum number of samples required to split a node
     #[arg(long, default_value = "2")]
     min_samples_split: usize,
+
+    /// Target column - the class to predict. By default the last column.
+    #[arg(short, long, default_value = None)]
+    target_column: Option<usize>,
 }
 
 fn create_folds(data: &[Sample], k: usize) -> Vec<Vec<Sample>> {
@@ -84,25 +88,27 @@ fn split_data(data: &[Sample], split_ratio: f64) -> (Vec<Sample>, Vec<Sample>) {
     (train_data, test_data)
 }
 
-fn calculate_accuracy(model: &DecisionTree, test_data: &[Sample]) -> f64 {
+// This is the correct implementation
+fn calculate_accuracy(model: &DecisionTree, test_data: &[Sample], target_idx: usize) -> f64 {
     if test_data.is_empty() {
         return 0.0;
     }
 
-    let mut correct_predictions = 0;
-    let total_predictions = test_data.len();
+    let correct_predictions = test_data
+        .iter()
+        .filter(|&row| {
+            // row includes target label, but the tree will not have any questions for that col
+            let predicted_label_id = model.predict(row);
 
-    for row in test_data {
-        let features = &row[..row.len() - 1];
-        let true_label = &row[row.len() - 1];
+            if let SampleValue::String(true_label_id) = row[target_idx] {
+                predicted_label_id == true_label_id
+            } else {
+                false // True label is not a string, so prediction cannot be correct.
+            }
+        })
+        .count();
 
-        let predicted_label = model.predict(&features.to_vec());
-        if SampleValue::String(predicted_label) == *true_label {
-            correct_predictions += 1;
-        }
-    }
-
-    (correct_predictions as f64 / total_predictions as f64) * 100.0
+    (correct_predictions as f64 / test_data.len() as f64) * 100.0
 }
 
 fn kfold_eval(
@@ -128,9 +134,10 @@ fn kfold_eval(
 
         println!("\n--- Fold {}/{} ---", i + 1, args.k_folds);
         println!(
-            "Training on {} samples, testing on {} samples.",
+            "Training on {} samples, testing on {} samples. Target Class: {}",
             train_data.len(),
-            test_data.len()
+            test_data.len(),
+            dataset.metadata.header[dataset.metadata.target_column_index]
         );
 
         // Train the model for this fold
@@ -143,7 +150,8 @@ fn kfold_eval(
             .build(&train_data, &dataset.metadata)?;
 
         // Evaluate and store accuracy
-        let accuracy = calculate_accuracy(&model, test_data);
+        let target_idx = dataset.metadata.target_column_index;
+        let accuracy = calculate_accuracy(&model, test_data, target_idx);
         fold_accuracies.push(accuracy);
         println!("Fold {} Accuracy: {accuracy:.2}%", i + 1);
     }
@@ -186,7 +194,10 @@ fn split_eval(
     );
     println!("{}", "-".repeat(30));
 
-    println!("Training the decision tree model (criterion: {criterion:?})...",);
+    let target_class = &dataset.metadata.header[dataset.metadata.target_column_index];
+    println!(
+        "Training the decision tree model for label '{target_class}' (criterion: {criterion:?})...",
+    );
     let model = DecisionTreeBuilder::new()
         .verbose(1)
         .criterion(criterion)
@@ -200,7 +211,8 @@ fn split_eval(
     }
 
     println!("\nEvaluating model accuracy on the test set...");
-    let accuracy = calculate_accuracy(&model, &test_data);
+    let target_idx = dataset.metadata.target_column_index;
+    let accuracy = calculate_accuracy(&model, &test_data, target_idx);
 
     println!("\n--- Evaluation Result ---");
     println!("Model Accuracy: {accuracy:.2}%");
@@ -215,7 +227,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     if let Some(test_file) = args.test_file {
         // Case 1: External test file provided
         let dataset: LoadedSplitDataset =
-            load_train_test_csv(&args.file_path, &test_file, None, true)?;
+            load_train_test_csv(&args.file_path, &test_file, args.target_column, true)?;
         println!(
             "Dataset loaded successfully with {} training + {} test rows.",
             dataset.train_data.len(),
@@ -223,7 +235,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         );
 
         // Train
-        println!("\nTraining decision tree (criterion: {criterion:?})...",);
+        let target_class = &dataset.metadata.header[dataset.metadata.target_column_index];
+        println!("\nTraining decision tree for '{target_class}' (criterion: {criterion:?})...",);
         let mut model = DecisionTree::train(
             &dataset.train_data,
             &dataset.metadata,
@@ -244,13 +257,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
 
         println!("\nEvaluating model accuracy on the external test set...");
-        let accuracy = calculate_accuracy(&model, &dataset.test_data);
+        let target_idx = dataset.metadata.target_column_index;
+        let accuracy = calculate_accuracy(&model, &dataset.test_data, target_idx);
         println!("\n--- Evaluation Result ---");
         println!("Model Accuracy: {accuracy:.2}%");
         println!("{}", "-".repeat(30));
     } else {
         // Case 2: Single file, split or k-fold
-        let dataset: LoadedDataset = load_single_csv(&args.file_path, None, true)?;
+        let dataset: LoadedDataset = load_single_csv(&args.file_path, args.target_column, true)?;
         println!(
             "Dataset loaded successfully with {} rows.",
             dataset.data.len()

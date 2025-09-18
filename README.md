@@ -72,6 +72,8 @@ Options:
           Maximum depth of the tree (None = unlimited)
       --min-samples-split <MIN_SAMPLES_SPLIT>
           Minimum number of samples required to split a node [default: 2]
+  -t, --target-column <TARGET_COLUMN>
+          Target column - the class to predict. By default the last column
   -h, --help
           Print help
   -V, --version

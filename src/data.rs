@@ -133,7 +133,7 @@ pub struct LoadedSplitDataset {
 fn scan_csv(
     fname: &str,
     vocab: &mut Vocabulary,
-    target_column: Option<usize>, // None means last column
+    target_column: Option<usize>, // None interpreted as last column
     verbose: bool,
 ) -> Result<(Vec<String>, usize, usize), Box<dyn std::error::Error>> {
     let file = File::open(fname)?;
@@ -149,13 +149,16 @@ fn scan_csv(
     let num_columns = header.len();
 
     // Determine target column index
-    let target_idx = target_column.unwrap_or(num_columns.saturating_sub(1));
-    if target_idx >= num_columns {
-        return Err(format!(
-            "Target column index {target_idx} is out of bounds (file has {num_columns} columns)"
-        )
-        .into());
-    }
+    let target_idx = match target_column {
+        Some(idx) if idx < num_columns => idx,
+        Some(idx) => {
+            return Err(format!(
+                "Target column index {idx} is out of bounds (file has {num_columns} columns)"
+            )
+            .into());
+        }
+        None => num_columns.saturating_sub(1),
+    };
 
     let mut line_number = 1; // Header was line 0
     let mut target_labels = std::collections::HashSet::new();

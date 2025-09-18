@@ -157,7 +157,8 @@ impl<'a> DecisionTree<'a> {
                         let p_actual = set1.len() as f64 / row_indices.len() as f64;
                         current_score
                             - p_actual * criterion(&count_classes(all_data, &set1, target_idx))
-                            - (1.0 - p_actual) * criterion(&count_classes(all_data, &set2, target_idx))
+                            - (1.0 - p_actual)
+                                * criterion(&count_classes(all_data, &set2, target_idx))
                     }
                 };
 
@@ -276,7 +277,7 @@ impl<'a> DecisionTree<'a> {
         let mut best_sets: Option<(Vec<usize>, Vec<usize>)> = None;
 
         let total_columns = meta.header.len();
-        for col in (0..total_columns).filter(|&i| i!=target_idx) {
+        for col in (0..total_columns).filter(|&i| i != target_idx) {
             let split = match meta.column_types[col] {
                 ColumnType::Numeric => Self::find_best_numeric_split(
                     current_score,
@@ -286,9 +287,14 @@ impl<'a> DecisionTree<'a> {
                     criterion,
                     target_idx,
                 ),
-                ColumnType::Categorical => {
-                    Self::find_best_split(current_score, all_data, row_indices, col, criterion, target_idx)
-                }
+                ColumnType::Categorical => Self::find_best_split(
+                    current_score,
+                    all_data,
+                    row_indices,
+                    col,
+                    criterion,
+                    target_idx,
+                ),
                 ColumnType::Mixed => return Err(TreeError::MixedTypesInColumn),
             };
             if let Some((gain, value, set1, set2)) = split {
