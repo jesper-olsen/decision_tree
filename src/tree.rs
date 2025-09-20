@@ -297,12 +297,12 @@ impl<'a> DecisionTree<'a> {
                 ),
                 ColumnType::Mixed => return Err(TreeError::MixedTypesInColumn),
             };
-            if let Some((gain, value, set1, set2)) = split {
-                if gain > best_gain {
-                    best_gain = gain;
-                    best_rule = Some((col, value));
-                    best_sets = Some((set1, set2));
-                }
+            if let Some((gain, value, set1, set2)) = split
+                && gain > best_gain
+            {
+                best_gain = gain;
+                best_rule = Some((col, value));
+                best_sets = Some((set1, set2));
             }
         }
 

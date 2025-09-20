@@ -40,6 +40,10 @@ impl Vocabulary {
     pub fn len(&self) -> usize {
         self.vec.len()
     }
+
+    pub fn is_empty(&self) -> bool {
+        self.vec.len()==0
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
